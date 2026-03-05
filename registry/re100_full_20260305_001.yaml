@@ -1,0 +1,138 @@
+run_id: re100_full_20260305_001
+parent_run_id: null
+created_at: '2026-03-05T16:28:44'
+slurm_job_id: '129842'
+base_commit: null
+source_diff: '# WARNING: base reference not found at /scratch-big/tmichel/GNN/RUNS/NEWCYL/ONECYL_ARTICLE/graph-physics; diff
+  skipped.
+
+  '
+run_dir: /scratch-big/tmichel/GNN/RUNS/NEWCYL/ONECYL_ARTICLE/onecyl-T-Re2-VPLN-lgud
+dataset:
+  name: onecyl
+  re_case: Re2
+  variant: full
+  path: /scratch-big/tmichel/GNN/DATASETS/dataset_onecyl_Re1e2_gmsh_redo/train
+  meta_path: dataset_config/onecyl_meta.json
+model:
+  type: transformer
+  message_passing_num: 15
+  hidden_size: 128
+  node_input_size: 6
+  output_size: 3
+  edge_input_size: 0
+  num_heads: 4
+features:
+  input_fields:
+  - velocity_xy
+  - pressure
+  - levelset
+  - pos_xy
+  - nodetype
+  no_edge_feature: true
+loss:
+  type: &id001
+  - l2loss
+  - gradientl2loss
+  - convectionl2loss
+  - divergencel2loss
+  - gradientpressurel2loss
+  weights: &id002
+  - 1.0
+  - 0.01
+  - 0.0001
+  - 0.1
+  - 0.01
+  gradient_method: finite_diff
+noise:
+  amplitudes: &id003
+  - 0.02
+  - 0.01
+  index_start: &id004
+  - 0
+  - 2
+  index_end: &id005
+  - 2
+  - 3
+training:
+  num_epochs: 20
+  init_lr: 0.0001
+  batch_size: 2
+  warmup: 1500
+  seed: 42
+  num_workers: 2
+  prefetch_factor: 2
+  project_name: onecyl_article
+parameters_json:
+  dataset:
+    extension: xdmf
+    xdmf_folder: /scratch-big/tmichel/GNN/DATASETS/dataset_onecyl_Re1e2_gmsh_redo/train
+    meta_path: dataset_config/onecyl_meta.json
+    khop: 1
+    new_edges_ratio: 0
+  model:
+    type: transformer
+    message_passing_num: 15
+    hidden_size: 128
+    node_input_size: 6
+    output_size: 3
+    edge_input_size: 0
+    num_heads: 4
+  index:
+    feature_index_start: 0
+    feature_index_end: 6
+    output_index_start: 0
+    output_index_end: 3
+    node_type_index: 6
+  loss:
+    type: *id001
+    weights: *id002
+    gradient_method: finite_diff
+  transformations:
+    preprocessing:
+      noise: *id003
+      noise_index_start: *id004
+      noise_index_end: *id005
+      masking: 0
+    world_pos_parameters:
+      use: false
+      world_pos_index_start: 0
+      world_pos_index_end: 3
+job_sh: "#!/bin/bash\n#\n#SBATCH --job-name=ReX_Lphy\n#SBATCH --output=ReX_Lphy.log\n#\n#SBATCH --nodes 1\n#SBATCH --ntasks\
+  \ 4\n#SBATCH --ntasks-per-node=4\n#SBATCH --ntasks-per-core=1\n#SBATCH --threads-per-core=1\n#SBATCH --partition=GPU\n#SBATCH\
+  \ --qos=gpu\n#SBATCH --nodelist=node-99\n#SBATCH --mail-type=FAIL\n#SBATCH --time=168:00:00\n#SBATCH --gres=gpu:2g.10gb:1\n\
+  \n# Set environment variable for OpenMP\nexport OMP_PROC_BIND=true\n\n# Set wand offline\nexport WANDB_MODE=offline\n\n\
+  # Re2\necho \"Training Re2 model...\"\npython -m graphphysics.train \\\n            --project_name onecyl_article \\\n \
+  \           --training_parameters_path=training_config/onecyl_Re2.json \\\n            --num_epochs=20 \\\n            --init_lr=0.0001\
+  \ \\\n            --batch_size=2 \\\n            --warmup=1500 \\\n            --num_workers=2 \\\n            --prefetch_factor=2\
+  \ \\\n            --no_edge_feature \\\n            --model_save_name=T_onecyl_Re2_VPLN_lgud \\\n            --seed=42 \\\
+  \nmv meshes meshes_Re2\ncp -r checkpoints/T_onecyl_Re2_VPLN_lgud.ckpt backup/.\n\n# Re3\necho \"Training Re3 model...\"\n\
+  python -m graphphysics.train \\\n            --project_name onecyl_article \\\n            --training_parameters_path=training_config/onecyl_Re3.json\
+  \ \\\n            --num_epochs=20 \\\n            --init_lr=0.0001 \\\n            --batch_size=2 \\\n            --warmup=1500\
+  \ \\\n            --num_workers=2 \\\n            --prefetch_factor=2 \\\n            --no_edge_feature \\\n           \
+  \ --model_save_name=T_onecyl_Re3_VPLN_lgud \\\n            --seed=42 \\\nmv meshes meshes_Re3\ncp -r checkpoints/T_onecyl_Re3_VPLN_lgud.ckpt\
+  \ backup/."
+slurm:
+  partition: GPU
+  gres: gpu:2g.10gb:1
+  gpu_type: NVIDIA A100-PCIE-40GB
+  wall_clock_seconds: null
+  node: node-99
+checkpoint:
+  path: /scratch-big/tmichel/GNN/RUNS/NEWCYL/ONECYL_ARTICLE/onecyl-T-Re2-VPLN-lgud/checkpoints/T_onecyl_Re2_VPLN_lgud.ckpt
+  save_name: T_onecyl_Re3_VPLN_lgud
+wandb:
+  run_id: 1koz7qkt
+  url: https://wandb.ai/theodore-michel-mines-paris-psl/onecyl_article/runs/1koz7qkt
+  project: onecyl_article
+metrics:
+  final:
+    val_rollout_rmse: 0.28927081823349
+    val_1step_rmse: 0.1466066539287567
+    train_loss: 0.024299733340740204
+  best:
+    val_rollout_rmse: null
+    val_1step_rmse: null
+    train_loss: null
+    url: https://wandb.ai/theodore-michel-mines-paris-psl/onecyl_article/runs/1koz7qkt
+notes: Baseline Re=100 + Re=1000, physics loss (lgud), 20 epochs, seed=42
