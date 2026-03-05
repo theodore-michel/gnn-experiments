@@ -1,0 +1,51 @@
+# --- Python cache / bytecode ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Virtual/env files ---
+.env
+.env.*
+.venv/
+venv/
+env/
+
+# --- Build / packaging ---
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# --- Tooling caches ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.benchmarks/
+.coverage
+.coverage.*
+htmlcov/
+
+# --- Editor / OS ---
+.idea/
+.vscode/
+.DS_Store
+
+# --- Runtime logs / temp ---
+*.log
+nohup.out
+tmp/
+temp/
+
+# --- W&B / experiment-generated artifacts ---
+wandb/
+
+# --- Postprocess outputs (keep scaffold code/docs) ---
+postprocess/**/results/
+postprocess/**/figures/
+postprocess/**/videos/
+postprocess/**/outputs/
+
+# --- Keep registry records versioned ---
+!registry/
+!registry/*.yaml
