@@ -18,17 +18,16 @@ gnn-experiments/
 ├── registry/               # One YAML file per run (git-tracked)
 │   ├── re100_full_20260305_001.yaml
 │   └── ...
-└── postprocess/            # Post-processing scaffold (to be implemented)
-    ├── __init__.py
-    ├── metrics/            # Error statistics, custom metric computation
-    │   ├── __init__.py
-    │   └── README.md
-    ├── visualization/      # Plotting, ParaView XDMF, video generation
-    │   ├── __init__.py
-    │   └── README.md
-    └── utils/              # Shared utilities: data loading, XDMF parsing
-        ├── __init__.py
-        └── README.md
+└── postprocess/
+    ├── config.example.json # Example config for error/force/plot pipeline
+    ├── run_postprocess.sh  # One-shot launcher: errors -> forces -> plots
+    ├── metrics/
+    │   ├── compute_errors.py
+    │   └── compute_forces.py
+    ├── visualization/
+    │   └── plot_results.py
+    └── utils/
+        └── xdmf_io.py
 ```
 
 ## Prerequisites
@@ -181,20 +180,105 @@ See [schema.yaml](schema.yaml) for the full annotated template.
 
 ---
 
-## Adding post-processing scripts
+## Post-processing quickstart (new users)
 
-The `postprocess/` directory contains stub packages for future implementation:
+The repository now includes a complete post-processing pipeline for GNN prediction
+XDMFs:
 
-- **`metrics/`** — Error computation (RMSE, MAE, drag/lift coefficients, …)
-- **`visualization/`** — Matplotlib plots, ParaView XDMF export, video generation
-- **`utils/`** — Shared I/O helpers (XDMF readers, mesh loading, …)
+- `postprocess/metrics/compute_errors.py`: per-case RMSE + cumulative RMSE
+- `postprocess/metrics/compute_forces.py`: drag/lift from pressure + viscous terms
+- `postprocess/visualization/plot_results.py`: publication-ready figures
+- `postprocess/run_postprocess.sh`: one-shot launcher
 
-Each subfolder has a `README.md` describing its intended scope. To add a new script:
+### 1) Activate environment
 
-1. Create your `.py` file in the appropriate subfolder.
-2. Import shared utilities from `postprocess.utils`.
-3. Add a CLI entry point (use `click`) if the script should be callable standalone.
-4. Document usage in the subfolder's `README.md`.
+```bash
+cd gnn-experiments
+conda activate graph
+```
+
+### 2) Create your config
+
+```bash
+cp postprocess/config.example.json postprocess/config.json
+```
+
+Edit `postprocess/config.json` with your actual paths and model names:
+
+- `dataset_parameters.prediction_folder`
+- `dataset_parameters.path_to_configs_pool`
+- `model_parameters.name` (string for single model, list for comparison)
+- `model_parameters.final_base_name` (usually `pred_`)
+- `plot_parameters.truth_prediction_pairs`
+
+Minimal field map convention for onecyl predictions:
+
+```json
+"feature_map": {
+    "velocity_x": "x0",
+    "velocity_y": "x1",
+    "pressure": "x2",
+    "levelset": "x3",
+    "nodetype": "x6"
+}
+```
+
+### 3) Run full pipeline (recommended)
+
+```bash
+bash postprocess/run_postprocess.sh \
+    -p postprocess/config.json \
+    -d ./postprocess_results \
+    --sensor-errors \
+    --metric AE \
+    --forces \
+    --workers 8 \
+    --format png pdf
+```
+
+If you also want truth-force comparison curves:
+
+```bash
+bash postprocess/run_postprocess.sh \
+    -p postprocess/config.json \
+    -d ./postprocess_results \
+    --forces \
+    --truth-folder /path/to/truth/xdmf/folder
+```
+
+Useful options:
+
+- `--load-data`: re-use cached sensor extraction
+- `--skip-errors`, `--skip-forces`, `--skip-plots`: partial reruns
+- `--article-style`: compact figure style for paper export
+- `--compare`: force comparison mode (otherwise auto-detected from config)
+
+### 4) Run modules directly (advanced)
+
+```bash
+python -m postprocess.metrics.compute_errors -p postprocess/config.json -d ./results
+python -m postprocess.metrics.compute_forces -p postprocess/config.json -d ./results --workers 8
+python -m postprocess.visualization.plot_results -d ./results --format png pdf
+```
+
+### 5) Output structure
+
+Typical generated artifacts:
+
+- `postprocess_results/rmse_per_case/*.csv`
+- `postprocess_results/rmse_summary.csv`
+- `postprocess_results/sensor_errors/*.json` (if `--sensor-errors`)
+- `postprocess_results/forces/*.csv` (if `--forces`)
+- `postprocess_results/plots/*.(png|pdf|svg)`
+
+### CLI help
+
+```bash
+bash postprocess/run_postprocess.sh --help
+python -m postprocess.metrics.compute_errors --help
+python -m postprocess.metrics.compute_forces --help
+python -m postprocess.visualization.plot_results --help
+```
 
 ---
 
