@@ -20,10 +20,9 @@ import glob
 import json
 import os
 import pickle
-import re
 from enum import IntEnum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import meshio
 import numpy as np
@@ -47,6 +46,7 @@ class NodeType(IntEnum):
 # ---------------------------------------------------------------------------
 # XDMF read / write
 # ---------------------------------------------------------------------------
+
 
 def xdmf_to_meshes(
     xdmf_file_path: str | Path,
@@ -80,7 +80,9 @@ def xdmf_to_meshes(
         for k in range(reader.num_steps):
             t, point_data, _ = reader.read_data(k)
             timesteps.append(t)
-            meshes.append(meshio.Mesh(points=points, cells=cells, point_data=point_data))
+            meshes.append(
+                meshio.Mesh(points=points, cells=cells, point_data=point_data)
+            )
 
     timesteps_arr = np.array(timesteps)
     if verbose:
@@ -137,6 +139,7 @@ def meshes_to_xdmf(
 # Case gathering
 # ---------------------------------------------------------------------------
 
+
 def gather_cases(
     case_folder: str | Path,
     case_base_name: str,
@@ -158,7 +161,7 @@ def gather_cases(
     cases: Dict[str, str] = {}
     for f in files:
         basename = os.path.basename(f).replace(extension, "")
-        case_id = basename[len(case_base_name):]
+        case_id = basename[len(case_base_name) :]
         cases[case_id] = f
     return cases
 
@@ -172,6 +175,7 @@ def load_configs_pool(path: str | Path) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Nearest-node sensor lookup
 # ---------------------------------------------------------------------------
+
 
 def build_kdtree(points: np.ndarray) -> cKDTree:
     """Build a *scipy* cKDTree from mesh node coordinates."""
@@ -207,6 +211,7 @@ def nearest_node_indices(
 # Point-data extraction (single model)
 # ---------------------------------------------------------------------------
 
+
 def extract_point_values(
     meshes: List[meshio.Mesh],
     coords_dict: Dict[str, List[float]],
@@ -238,9 +243,13 @@ def extract_point_values(
             values = []
             for mesh in meshes:
                 if field not in mesh.point_data:
-                    raise KeyError(f"Field '{field}' not in mesh point_data at sensor '{sensor_name}'")
+                    raise KeyError(
+                        f"Field '{field}' not in mesh point_data at sensor '{sensor_name}'"
+                    )
                 val = mesh.point_data[field][idx]
-                values.append(float(val) if np.ndim(val) == 0 else float(np.linalg.norm(val)))
+                values.append(
+                    float(val) if np.ndim(val) == 0 else float(np.linalg.norm(val))
+                )
             result[sensor_name][field] = values
     return result
 
@@ -277,6 +286,7 @@ def extract_point_values_multi(
 # ---------------------------------------------------------------------------
 # Auto-sensor / line placement
 # ---------------------------------------------------------------------------
+
 
 def create_auto_sensor_location(
     domain_dim_dict: Dict[str, float],
@@ -389,10 +399,16 @@ def create_line_points_dict(
 
     if line_axis == "x":
         axis_values = np.linspace(x_min, x_min + dx, num_points)
-        points = {f"L{i:04d}": [float(v), line_origins[1], 0.0] for i, v in enumerate(axis_values)}
+        points = {
+            f"L{i:04d}": [float(v), line_origins[1], 0.0]
+            for i, v in enumerate(axis_values)
+        }
     elif line_axis == "y":
         axis_values = np.linspace(y_min, y_min + dy, num_points)
-        points = {f"L{i:04d}": [line_origins[0], float(v), 0.0] for i, v in enumerate(axis_values)}
+        points = {
+            f"L{i:04d}": [line_origins[0], float(v), 0.0]
+            for i, v in enumerate(axis_values)
+        }
     else:
         raise ValueError(f"line_axis must be 'x' or 'y', got '{line_axis}'")
     return points, axis_values
@@ -401,6 +417,7 @@ def create_line_points_dict(
 # ---------------------------------------------------------------------------
 # Field renaming / vector-field creation helpers
 # ---------------------------------------------------------------------------
+
 
 def rename_fields(
     meshes: List[meshio.Mesh],
@@ -455,6 +472,7 @@ def create_norm_field(
 # ---------------------------------------------------------------------------
 # Serialisation helpers (numpy → JSON-safe)
 # ---------------------------------------------------------------------------
+
 
 def convert_np(obj: Any) -> Any:
     """Recursively convert numpy types to Python builtins for JSON serialisation."""
@@ -518,6 +536,7 @@ def load_sensor_data(
 # ---------------------------------------------------------------------------
 # Config loader
 # ---------------------------------------------------------------------------
+
 
 def load_json(path: str | Path) -> Dict[str, Any]:
     """Load a JSON configuration file."""

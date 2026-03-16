@@ -33,29 +33,21 @@ from tqdm import tqdm
 # Local imports — use relative when invoked as package, absolute otherwise
 try:
     from ..utils.xdmf_io import (
-        build_kdtree,
-        convert_np,
         create_auto_sensor_location,
-        extract_point_values,
         extract_point_values_multi,
         gather_cases,
         load_configs_pool,
         load_json,
-        nearest_node_indices,
         save_sensor_data,
         xdmf_to_meshes,
     )
 except ImportError:
     from postprocess.utils.xdmf_io import (
-        build_kdtree,
-        convert_np,
         create_auto_sensor_location,
-        extract_point_values,
         extract_point_values_multi,
         gather_cases,
         load_configs_pool,
         load_json,
-        nearest_node_indices,
         save_sensor_data,
         xdmf_to_meshes,
     )
@@ -64,6 +56,7 @@ except ImportError:
 # ============================================================================
 # Core RMSE helpers
 # ============================================================================
+
 
 def _resolve_model_folder(pred_folder: str, model_name: str) -> str:
     """Resolve model folder for both layouts:
@@ -153,6 +146,7 @@ def _align_pred_truth_arrays(
     n = min(len(pred_aligned), len(truth_aligned))
     return pred_aligned[:n], truth_aligned[:n], shift_steps
 
+
 def rmse_per_timestep(
     pred: np.ndarray,
     targ: np.ndarray,
@@ -180,6 +174,7 @@ def cumulative_rmse(rmse_arr: np.ndarray) -> np.ndarray:
 # ============================================================================
 # Full-mesh error computation
 # ============================================================================
+
 
 def compute_case_rmse(
     meshes: list,
@@ -259,7 +254,9 @@ def compute_cumulative_rmse_over_cases(
                 }
             )
     if not rows:
-        return pd.DataFrame(columns=["case", "rollout_step", "timestep", "time", "rmse", "cum_rmse"])
+        return pd.DataFrame(
+            columns=["case", "rollout_step", "timestep", "time", "rmse", "cum_rmse"]
+        )
     return pd.DataFrame(rows)
 
 
@@ -284,13 +281,17 @@ def summarize_over_models(
     for model_name, df in model_dfs.items():
         if df.empty:
             continue
-        grouped = df.groupby("rollout_step").agg(
-            time=("time", "first"),
-            rmse_mean=("rmse", "mean"),
-            rmse_std=("rmse", "std"),
-            cum_rmse_mean=("cum_rmse", "mean"),
-            cum_rmse_std=("cum_rmse", "std"),
-        ).reset_index()
+        grouped = (
+            df.groupby("rollout_step")
+            .agg(
+                time=("time", "first"),
+                rmse_mean=("rmse", "mean"),
+                rmse_std=("rmse", "std"),
+                cum_rmse_mean=("cum_rmse", "mean"),
+                cum_rmse_std=("cum_rmse", "std"),
+            )
+            .reset_index()
+        )
         grouped["timestep"] = grouped["rollout_step"]
         grouped["model"] = model_name
         rows.append(grouped)
@@ -305,6 +306,7 @@ def summarize_over_models(
 # ============================================================================
 # Sensor-level error computation
 # ============================================================================
+
 
 def compute_sensor_cumulated_error(
     sensor_data: Dict[str, Any],
@@ -373,6 +375,7 @@ def model_cumulated_error_stats(
 # End-to-end computation from config
 # ============================================================================
 
+
 def run_error_computation(config: Dict[str, Any], output_dir: str) -> None:
     """Run full error computation pipeline driven by a JSON config.
 
@@ -383,7 +386,11 @@ def run_error_computation(config: Dict[str, Any], output_dir: str) -> None:
     """
     dataset_params = config["dataset_parameters"]
     model_params = config["model_parameters"]
-    model_names = model_params["name"] if isinstance(model_params["name"], list) else [model_params["name"]]
+    model_names = (
+        model_params["name"]
+        if isinstance(model_params["name"], list)
+        else [model_params["name"]]
+    )
     base_name = model_params["final_base_name"]
     fallback_base = dataset_params.get("prediction_base_name")
     pred_folder = dataset_params["prediction_folder"]
@@ -433,7 +440,9 @@ def run_error_computation(config: Dict[str, Any], output_dir: str) -> None:
             if used_base == "<auto:*>" and df.empty:
                 # Auto-discovery path: compute over explicit cases (base-name free)
                 rows = []
-                for case_id, xdmf_path in tqdm(cases_probe.items(), desc="RMSE over cases"):
+                for case_id, xdmf_path in tqdm(
+                    cases_probe.items(), desc="RMSE over cases"
+                ):
                     meshes, timesteps = xdmf_to_meshes(xdmf_path)
                     timesteps = _to_physical_time(timesteps, dt=dt)
                     rmse_arr, cum_arr = compute_case_rmse(
@@ -485,7 +494,11 @@ def run_sensor_error_computation(
     """
     dataset_params = config["dataset_parameters"]
     model_params = config["model_parameters"]
-    model_names = model_params["name"] if isinstance(model_params["name"], list) else [model_params["name"]]
+    model_names = (
+        model_params["name"]
+        if isinstance(model_params["name"], list)
+        else [model_params["name"]]
+    )
     base_name = model_params["final_base_name"]
     fallback_base = dataset_params.get("prediction_base_name")
     pred_folder = dataset_params["prediction_folder"]
@@ -534,7 +547,9 @@ def run_sensor_error_computation(
 
     # Accumulators
     all_model_last_errors: Dict[str, List[float]] = {mn: [] for mn in model_names}
-    all_model_case_means: Dict[str, Dict[str, np.ndarray]] = {mn: {} for mn in model_names}
+    all_model_case_means: Dict[str, Dict[str, np.ndarray]] = {
+        mn: {} for mn in model_names
+    }
 
     for case_name in tqdm(case_names, desc="Sensor errors"):
         # Fields to extract
@@ -626,7 +641,9 @@ def run_sensor_error_computation(
                 for sensor_name, model_dict in sensor_data.items():
                     truth = np.asarray(model_dict[mn][tf], dtype=np.float64)
                     pred = np.asarray(model_dict[mn][pf], dtype=np.float64)
-                    pred_al, truth_al, _ = _align_pred_truth_arrays(pred, truth, shift_steps)
+                    pred_al, truth_al, _ = _align_pred_truth_arrays(
+                        pred, truth, shift_steps
+                    )
                     n = min(len(pred_al), len(truth_al))
                     aligned_payload["pairs"][f"{tf}|{pf}"][sensor_name] = {
                         "truth": truth_al[:n].tolist(),
@@ -634,8 +651,14 @@ def run_sensor_error_computation(
                     }
 
             # Additional velocity norm comparison (legacy-style expected output)
-            if all(k in [p.split("|")[0] for p in aligned_payload["pairs"].keys()] for k in ["y0", "y1"]):
-                if all(k in [p.split("|")[1] for p in aligned_payload["pairs"].keys()] for k in ["x0", "x1"]):
+            if all(
+                k in [p.split("|")[0] for p in aligned_payload["pairs"].keys()]
+                for k in ["y0", "y1"]
+            ):
+                if all(
+                    k in [p.split("|")[1] for p in aligned_payload["pairs"].keys()]
+                    for k in ["x0", "x1"]
+                ):
                     aligned_payload["pairs"]["Vnorm_targ|Vnorm_pred"] = {}
                     for sensor_name, model_dict in sensor_data.items():
                         truth_x = np.asarray(model_dict[mn]["y0"], dtype=np.float64)
@@ -644,9 +667,13 @@ def run_sensor_error_computation(
                         pred_y = np.asarray(model_dict[mn]["x1"], dtype=np.float64)
                         pred_norm = np.sqrt(pred_x**2 + pred_y**2)
                         truth_norm = np.sqrt(truth_x**2 + truth_y**2)
-                        pred_al, truth_al, _ = _align_pred_truth_arrays(pred_norm, truth_norm, shift_steps)
+                        pred_al, truth_al, _ = _align_pred_truth_arrays(
+                            pred_norm, truth_norm, shift_steps
+                        )
                         n = min(len(pred_al), len(truth_al))
-                        aligned_payload["pairs"]["Vnorm_targ|Vnorm_pred"][sensor_name] = {
+                        aligned_payload["pairs"]["Vnorm_targ|Vnorm_pred"][
+                            sensor_name
+                        ] = {
                             "truth": truth_al[:n].tolist(),
                             "pred": pred_al[:n].tolist(),
                         }
@@ -683,28 +710,37 @@ def run_sensor_error_computation(
 # CLI
 # ============================================================================
 
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Compute RMSE / cumulated error for GNN predictions."
     )
     p.add_argument(
-        "-p", "--parameters", required=True,
+        "-p",
+        "--parameters",
+        required=True,
         help="JSON config file path.",
     )
     p.add_argument(
-        "-d", "--directory", default="./error_results",
+        "-d",
+        "--directory",
+        default="./error_results",
         help="Output directory for CSV / NPZ results.",
     )
     p.add_argument(
-        "--sensor-errors", action="store_true",
+        "--sensor-errors",
+        action="store_true",
         help="Also compute sensor-level cumulated errors.",
     )
     p.add_argument(
-        "--metric", choices=["AE", "SE"], default="AE",
+        "--metric",
+        choices=["AE", "SE"],
+        default="AE",
         help="Error metric for sensor computation (AE=absolute, SE=squared).",
     )
     p.add_argument(
-        "--load-data", action="store_true",
+        "--load-data",
+        action="store_true",
         help="Re-use cached sensor JSON instead of re-extracting.",
     )
     return p

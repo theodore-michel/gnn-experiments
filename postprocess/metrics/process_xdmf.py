@@ -15,7 +15,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -135,7 +135,11 @@ def run_process_xdmf(config: Dict[str, Any], output_dir: str) -> None:
     dataset_params = config["dataset_parameters"]
     model_params = config["model_parameters"]
 
-    model_names = model_params["name"] if isinstance(model_params["name"], list) else [model_params["name"]]
+    model_names = (
+        model_params["name"]
+        if isinstance(model_params["name"], list)
+        else [model_params["name"]]
+    )
     base_name = model_params.get("final_base_name", "pred_")
     fallback_base = dataset_params.get("prediction_base_name")
     pred_folder = dataset_params["prediction_folder"]
@@ -160,13 +164,17 @@ def run_process_xdmf(config: Dict[str, Any], output_dir: str) -> None:
             proc_meshes = _build_processed_meshes(meshes, shift_steps=shift_steps)
             proc_times = timesteps[shift_steps:] if shift_steps > 0 else timesteps
             out_path = os.path.join(model_out, f"processed_{case_id}.xdmf")
-            meshes_to_xdmf(out_path, proc_meshes, proc_times, drop_first=False, verbose=False)
+            meshes_to_xdmf(
+                out_path, proc_meshes, proc_times, drop_first=False, verbose=False
+            )
 
     print(f"[process_xdmf] Processed XDMFs written to {processed_root}")
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Create processed XDMF files with aligned/vectorized fields.")
+    p = argparse.ArgumentParser(
+        description="Create processed XDMF files with aligned/vectorized fields."
+    )
     p.add_argument("-p", "--parameters", required=True, help="JSON config file path.")
     p.add_argument("-d", "--directory", required=True, help="Output root directory.")
     return p

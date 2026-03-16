@@ -59,6 +59,7 @@ except ImportError:
 # Geometry helpers
 # ============================================================================
 
+
 def _resolve_model_folder(pred_folder: str, model_name: str) -> str:
     """Resolve model folder for both layouts:
     1) <prediction_folder>/<model_name>/... and 2) <prediction_folder>/... (already model-specific).
@@ -140,6 +141,7 @@ def _normalize_case_id(case_id: str) -> str:
     match = re.search(r"(\d+)$", str(case_id))
     return match.group(1) if match else str(case_id)
 
+
 def _get_triangles(mesh: meshio.Mesh) -> np.ndarray:
     """Return the first triangle cell block as an (E, 3) int array."""
     for block in mesh.cells:
@@ -166,18 +168,22 @@ def compute_boundary_edges(
     (B, 2) int — ordered boundary edges (each row: [n0, n1]).
     """
     obstacle_mask = nodetype.astype(int) == obstacle_value
-    edges_all = np.vstack([
-        triangles[:, [0, 1]],
-        triangles[:, [1, 2]],
-        triangles[:, [2, 0]],
-    ])
+    edges_all = np.vstack(
+        [
+            triangles[:, [0, 1]],
+            triangles[:, [1, 2]],
+            triangles[:, [2, 0]],
+        ]
+    )
     # Keep edges where both nodes are obstacle
     both_obstacle = obstacle_mask[edges_all[:, 0]] & obstacle_mask[edges_all[:, 1]]
     candidate_edges = edges_all[both_obstacle]
 
     # Only keep edges that appear exactly once (true boundary, not interior obstacle edges)
     sorted_edges = np.sort(candidate_edges, axis=1)
-    _, idx, counts = np.unique(sorted_edges, axis=0, return_index=True, return_counts=True)
+    _, idx, counts = np.unique(
+        sorted_edges, axis=0, return_index=True, return_counts=True
+    )
     boundary_edges = candidate_edges[idx[counts == 1]]
     return boundary_edges
 
@@ -185,6 +191,7 @@ def compute_boundary_edges(
 # ============================================================================
 # Gradient computation
 # ============================================================================
+
 
 def tri_gradients(
     points: np.ndarray,
@@ -204,8 +211,9 @@ def tri_gradients(
     v2 = pts[triangles[:, 2]]
 
     # 2 * signed area
-    det = (v1[:, 0] - v0[:, 0]) * (v2[:, 1] - v0[:, 1]) - \
-          (v2[:, 0] - v0[:, 0]) * (v1[:, 1] - v0[:, 1])
+    det = (v1[:, 0] - v0[:, 0]) * (v2[:, 1] - v0[:, 1]) - (v2[:, 0] - v0[:, 0]) * (
+        v1[:, 1] - v0[:, 1]
+    )
     area2 = det
     areas = 0.5 * np.abs(det)
 
@@ -285,6 +293,7 @@ def triangle_velocity_gradient(
 # Drag / Lift computation
 # ============================================================================
 
+
 def compute_drag_lift(
     points: np.ndarray,
     triangles: np.ndarray,
@@ -358,8 +367,8 @@ def compute_drag_lift(
 
         # Average quantities at edge midpoint
         p_mid = 0.5 * (pressure[n0] + pressure[n1])
-        gvx_mid = 0.5 * (grad_vx[n0] + grad_vx[n1])   # (du/dx, du/dy)
-        gvy_mid = 0.5 * (grad_vy[n0] + grad_vy[n1])   # (dv/dx, dv/dy)
+        gvx_mid = 0.5 * (grad_vx[n0] + grad_vx[n1])  # (du/dx, du/dy)
+        gvy_mid = 0.5 * (grad_vy[n0] + grad_vy[n1])  # (dv/dx, dv/dy)
 
         # Stress tensor:  sigma_ij = -p delta_ij + mu (dui/dxj + duj/dxi)
         # Traction:  t_i = sigma_ij n_j
@@ -372,7 +381,7 @@ def compute_drag_lift(
         lift_total += ty * edge_len
 
     # Normalise to coefficients
-    q = 0.5 * rho * U_inf ** 2 * D
+    q = 0.5 * rho * U_inf**2 * D
     if q > 0:
         C_D = drag_total / q
         C_L = lift_total / q
@@ -387,6 +396,7 @@ def compute_drag_lift(
 # Time-series force computation
 # ============================================================================
 
+
 def _get_field(mesh: meshio.Mesh, name: str, field_map: Dict[str, str]) -> np.ndarray:
     """Resolve a logical field name via the config map, falling back to direct lookup."""
     mapped = field_map.get(name, name)
@@ -394,8 +404,10 @@ def _get_field(mesh: meshio.Mesh, name: str, field_map: Dict[str, str]) -> np.nd
         return mesh.point_data[mapped]
     if name in mesh.point_data:
         return mesh.point_data[name]
-    raise KeyError(f"Field '{name}' (mapped='{mapped}') not found in mesh point_data. "
-                   f"Available: {list(mesh.point_data.keys())}")
+    raise KeyError(
+        f"Field '{name}' (mapped='{mapped}') not found in mesh point_data. "
+        f"Available: {list(mesh.point_data.keys())}"
+    )
 
 
 def compute_series_forces(
@@ -437,7 +449,9 @@ def compute_series_forces(
         p = _get_field(mesh, "pressure", feature_map)
         ls = _get_field(mesh, "levelset", feature_map)
         nt = _get_field(mesh, "nodetype", feature_map)
-        cd, cl = compute_drag_lift(points, triangles, vx, vy, p, ls, nt, mu, rho, U_inf, D)
+        cd, cl = compute_drag_lift(
+            points, triangles, vx, vy, p, ls, nt, mu, rho, U_inf, D
+        )
         return int(k), float(timesteps[k]), cd, cl
 
     results = []
@@ -457,6 +471,7 @@ def compute_series_forces(
 # End-to-end computation from config
 # ============================================================================
 
+
 def run_forces_computation(
     config: Dict[str, Any],
     output_dir: str,
@@ -470,20 +485,27 @@ def run_forces_computation(
     """
     dataset_params = config["dataset_parameters"]
     model_params = config["model_parameters"]
-    model_names = model_params["name"] if isinstance(model_params["name"], list) else [model_params["name"]]
+    model_names = (
+        model_params["name"]
+        if isinstance(model_params["name"], list)
+        else [model_params["name"]]
+    )
     base_name = model_params["final_base_name"]
     fallback_base = dataset_params.get("prediction_base_name")
     pred_folder = dataset_params["prediction_folder"]
     dt = dataset_params.get("dt", 1.0)
 
     # Feature map — maps logical names → actual field names in the XDMF
-    feature_map = config.get("feature_map", {
-        "velocity_x": "x0",
-        "velocity_y": "x1",
-        "pressure": "x2",
-        "levelset": "x3",
-        "nodetype": "x6",
-    })
+    feature_map = config.get(
+        "feature_map",
+        {
+            "velocity_x": "x0",
+            "velocity_y": "x1",
+            "pressure": "x2",
+            "levelset": "x3",
+            "nodetype": "x6",
+        },
+    )
 
     # Physical parameters
     phys = config.get("physical_parameters", {})
@@ -512,14 +534,17 @@ def run_forces_computation(
         model_out = os.path.join(forces_dir, model_name)
         os.makedirs(model_out, exist_ok=True)
 
-        for case_id, xdmf_path in tqdm(
-            cases.items(), desc=f"Forces [{model_name}]"
-        ):
+        for case_id, xdmf_path in tqdm(cases.items(), desc=f"Forces [{model_name}]"):
             meshes, timesteps = xdmf_to_meshes(xdmf_path)
             timesteps = _to_physical_time(timesteps, dt=dt)
             df = compute_series_forces(
-                meshes, timesteps, feature_map,
-                mu=mu, rho=rho, U_inf=U_inf, D=D,
+                meshes,
+                timesteps,
+                feature_map,
+                mu=mu,
+                rho=rho,
+                U_inf=U_inf,
+                D=D,
                 n_workers=n_workers,
                 start_step=force_start_step,
             )
@@ -531,16 +556,18 @@ def run_forces_computation(
                 continue
             last = df.iloc[-1]
             tail = df.tail(min(force_avg_window, len(df)))
-            summary_rows.append({
-                "model": model_name,
-                "case": case_id,
-                "drag_final": last["drag"],
-                "lift_final": last["lift"],
-                "drag_mean_last_window": tail["drag"].mean(),
-                "lift_mean_last_window": tail["lift"].mean(),
-                "avg_window_steps": int(len(tail)),
-                "force_start_step": int(force_start_step),
-            })
+            summary_rows.append(
+                {
+                    "model": model_name,
+                    "case": case_id,
+                    "drag_final": last["drag"],
+                    "lift_final": last["lift"],
+                    "drag_mean_last_window": tail["drag"].mean(),
+                    "lift_mean_last_window": tail["lift"].mean(),
+                    "avg_window_steps": int(len(tail)),
+                    "force_start_step": int(force_start_step),
+                }
+            )
 
     pd.DataFrame(summary_rows).to_csv(
         os.path.join(output_dir, "forces_summary.csv"), index=False
@@ -551,6 +578,7 @@ def run_forces_computation(
 # ============================================================================
 # Ground-truth force computation from a truth XDMF
 # ============================================================================
+
 
 def compute_truth_forces(
     truth_folder: str,
@@ -578,8 +606,13 @@ def compute_truth_forces(
             _inject_truth_alias_fields(mesh)
         timesteps = _to_physical_time(timesteps, dt=1.0)
         df = compute_series_forces(
-            meshes, timesteps, feature_map,
-            mu=mu, rho=rho, U_inf=U_inf, D=D,
+            meshes,
+            timesteps,
+            feature_map,
+            mu=mu,
+            rho=rho,
+            U_inf=U_inf,
+            D=D,
             n_workers=n_workers,
             start_step=start_step,
         )
@@ -592,28 +625,37 @@ def compute_truth_forces(
 # CLI
 # ============================================================================
 
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Compute drag / lift forces from GNN prediction XDMFs."
     )
     p.add_argument(
-        "-p", "--parameters", required=True,
+        "-p",
+        "--parameters",
+        required=True,
         help="JSON config file path.",
     )
     p.add_argument(
-        "-d", "--directory", default="./force_results",
+        "-d",
+        "--directory",
+        default="./force_results",
         help="Output directory for CSV results.",
     )
     p.add_argument(
-        "--workers", type=int, default=4,
+        "--workers",
+        type=int,
+        default=4,
         help="Thread pool size for parallel timestep computation.",
     )
     p.add_argument(
-        "--truth-folder", default=None,
+        "--truth-folder",
+        default=None,
         help="If given, also compute forces on ground-truth XDMFs in this folder.",
     )
     p.add_argument(
-        "--truth-base-name", default=None,
+        "--truth-base-name",
+        default=None,
         help="Base name for ground-truth XDMF files.",
     )
     return p
@@ -626,10 +668,16 @@ def main(argv: Optional[List[str]] = None) -> None:
     run_forces_computation(config, args.directory, n_workers=args.workers)
 
     if args.truth_folder:
-        feature_map = config.get("feature_map", {
-            "velocity_x": "x0", "velocity_y": "x1",
-            "pressure": "x2", "levelset": "x3", "nodetype": "x6",
-        })
+        feature_map = config.get(
+            "feature_map",
+            {
+                "velocity_x": "x0",
+                "velocity_y": "x1",
+                "pressure": "x2",
+                "levelset": "x3",
+                "nodetype": "x6",
+            },
+        )
         dataset_params = config.get("dataset_parameters", {})
         truth_base_name = (
             args.truth_base_name

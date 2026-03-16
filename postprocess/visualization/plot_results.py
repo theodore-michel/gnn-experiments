@@ -31,25 +31,14 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 import matplotlib
-matplotlib.use("Agg")  # non-interactive backend
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-try:
-    import seaborn as sns
-    HAS_SEABORN = True
-except ImportError:
-    HAS_SEABORN = False
-
-try:
-    from ..utils.xdmf_io import load_json
-except ImportError:
-    from postprocess.utils.xdmf_io import load_json
+matplotlib.use("Agg")  # non-interactive backend
 
 
 # ============================================================================
@@ -65,13 +54,29 @@ PLOT_CONFIG: Dict[str, Any] = {
     "figsize": (13, 7),
     "dpi": 300,
     "line_width": 2.4,
-    "truth_style": {"color": "black", "linestyle": "--", "linewidth": 2.0, "alpha": 0.9},
-    "pred_style": {"color": "#1f77b4", "linestyle": "-", "linewidth": 2.4, "alpha": 0.9},
+    "truth_style": {
+        "color": "black",
+        "linestyle": "--",
+        "linewidth": 2.0,
+        "alpha": 0.9,
+    },
+    "pred_style": {
+        "color": "#1f77b4",
+        "linestyle": "-",
+        "linewidth": 2.4,
+        "alpha": 0.9,
+    },
     "error_band_alpha": 0.2,
     "error_margin_alpha": 0.3,
     "palette": [
-        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
-        "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
+        "#1f77b4",
+        "#ff7f0e",
+        "#2ca02c",
+        "#d62728",
+        "#9467bd",
+        "#8c564b",
+        "#e377c2",
+        "#7f7f7f",
     ],
     "save_formats": ["png"],
 }
@@ -79,17 +84,19 @@ PLOT_CONFIG: Dict[str, Any] = {
 
 def _apply_style(cfg: Dict[str, Any]) -> None:
     """Set matplotlib rcParams from config."""
-    plt.rcParams.update({
-        "font.family": cfg.get("font_family", "serif"),
-        "font.size": cfg.get("font_size", 14),
-        "axes.titlesize": cfg.get("title_size", 16),
-        "axes.labelsize": cfg.get("font_size", 14),
-        "xtick.labelsize": cfg.get("tick_size", 12),
-        "ytick.labelsize": cfg.get("tick_size", 12),
-        "legend.fontsize": cfg.get("legend_size", 12),
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-    })
+    plt.rcParams.update(
+        {
+            "font.family": cfg.get("font_family", "serif"),
+            "font.size": cfg.get("font_size", 14),
+            "axes.titlesize": cfg.get("title_size", 16),
+            "axes.labelsize": cfg.get("font_size", 14),
+            "xtick.labelsize": cfg.get("tick_size", 12),
+            "ytick.labelsize": cfg.get("tick_size", 12),
+            "legend.fontsize": cfg.get("legend_size", 12),
+            "axes.spines.top": False,
+            "axes.spines.right": False,
+        }
+    )
 
 
 def _save_fig(
@@ -122,6 +129,7 @@ def _normalize_case_id(case_id: str) -> str:
 # ============================================================================
 # 1. Sensor time-series plots
 # ============================================================================
+
 
 def plot_sensors(
     data_dict: Dict[str, Dict[str, List[float]]],
@@ -169,7 +177,11 @@ def plot_sensors(
 
             ax.plot(t, truth_vals, label="Ground Truth", **cfg["truth_style"])
             ax.plot(t, pred_vals, label="Prediction", **cfg["pred_style"])
-            ax.set_title(f"${sensor_name[0]}_{{{sensor_name[1:]}}}$" if len(sensor_name) > 1 else sensor_name)
+            ax.set_title(
+                f"${sensor_name[0]}_{{{sensor_name[1:]}}}$"
+                if len(sensor_name) > 1
+                else sensor_name
+            )
             ax.set_xlabel("Rollout step")
 
             is_velocity = "V" in truth_field or "V" in pred_field
@@ -182,7 +194,9 @@ def plot_sensors(
             axs_flat[j].set_visible(False)
 
         fig.tight_layout()
-        _save_fig(fig, output_dir, f"sensors_{truth_field}_{pred_field}", cfg, article_style)
+        _save_fig(
+            fig, output_dir, f"sensors_{truth_field}_{pred_field}", cfg, article_style
+        )
 
 
 def plot_sensors_multi(
@@ -230,17 +244,35 @@ def plot_sensors_multi(
 
             for j, mn in enumerate(model_names):
                 vals = np.asarray(model_dict[mn][pred_field])
-                t = np.asarray(times[mn]) if times and mn in times else np.arange(len(vals))
-                ax.plot(t, vals, color=palette[j % len(palette)], linewidth=cfg["line_width"],
-                        alpha=0.8, label=_format_name(mn))
+                t = (
+                    np.asarray(times[mn])
+                    if times and mn in times
+                    else np.arange(len(vals))
+                )
+                ax.plot(
+                    t,
+                    vals,
+                    color=palette[j % len(palette)],
+                    linewidth=cfg["line_width"],
+                    alpha=0.8,
+                    label=_format_name(mn),
+                )
 
             # Truth (from first model)
             first_model = model_names[0]
             truth_vals = np.asarray(model_dict[first_model][truth_field])
-            t0 = np.asarray(times[first_model]) if times and first_model in times else np.arange(len(truth_vals))
+            t0 = (
+                np.asarray(times[first_model])
+                if times and first_model in times
+                else np.arange(len(truth_vals))
+            )
             ax.plot(t0, truth_vals, label="Ground Truth", **cfg["truth_style"])
 
-            ax.set_title(f"${sensor_name[0]}_{{{sensor_name[1:]}}}$" if len(sensor_name) > 1 else sensor_name)
+            ax.set_title(
+                f"${sensor_name[0]}_{{{sensor_name[1:]}}}$"
+                if len(sensor_name) > 1
+                else sensor_name
+            )
             ax.set_xlabel("Rollout step")
             is_velocity = "V" in truth_field or "V" in pred_field
             ax.set_ylabel(r"Velocity (m s$^{-1}$)" if is_velocity else "Pressure (Pa)")
@@ -251,12 +283,19 @@ def plot_sensors_multi(
             axs_flat[j].set_visible(False)
 
         fig.tight_layout()
-        _save_fig(fig, output_dir, f"sensors_multi_{truth_field}_{pred_field}", cfg, article_style)
+        _save_fig(
+            fig,
+            output_dir,
+            f"sensors_multi_{truth_field}_{pred_field}",
+            cfg,
+            article_style,
+        )
 
 
 # ============================================================================
 # 2. Line profile plots
 # ============================================================================
+
 
 def plot_lines(
     data_dict: Dict[str, Dict[str, Any]],
@@ -300,7 +339,9 @@ def plot_lines(
 
         # Auto y-limits
         if auto_y_limits:
-            all_truth = [v for td in data_dict.values() for v in td.get(truth_field, [0])]
+            all_truth = [
+                v for td in data_dict.values() for v in td.get(truth_field, [0])
+            ]
             y_min, y_max = min(all_truth), max(all_truth)
             margin = 0.1 * max(abs(y_min), abs(y_max), 1e-6)
             y_lim = (y_min - margin, y_max + margin)
@@ -311,13 +352,29 @@ def plot_lines(
             if i >= len(axs_flat):
                 break
             ax = axs_flat[i]
-            ax.plot(line_points_axis, ts_data[truth_field], label="Ground Truth", **cfg["truth_style"])
+            ax.plot(
+                line_points_axis,
+                ts_data[truth_field],
+                label="Ground Truth",
+                **cfg["truth_style"],
+            )
             # 5 % error margin band
             truth_arr = np.asarray(ts_data[truth_field])
             margin_arr = 0.05 * np.abs(truth_arr)
-            ax.fill_between(line_points_axis, truth_arr - margin_arr, truth_arr + margin_arr,
-                            color="gray", alpha=cfg["error_margin_alpha"], label=r"$\pm$5% margin")
-            ax.plot(line_points_axis, ts_data[pred_field], label="Prediction", **cfg["pred_style"])
+            ax.fill_between(
+                line_points_axis,
+                truth_arr - margin_arr,
+                truth_arr + margin_arr,
+                color="gray",
+                alpha=cfg["error_margin_alpha"],
+                label=r"$\pm$5% margin",
+            )
+            ax.plot(
+                line_points_axis,
+                ts_data[pred_field],
+                label="Prediction",
+                **cfg["pred_style"],
+            )
             ax.set_title(f"Step {ts_key}")
             ax.set_xlabel(rf"${line_type}$-axis")
             is_velocity = "V" in truth_field
@@ -332,7 +389,13 @@ def plot_lines(
             axs_flat[j].set_visible(False)
 
         fig.tight_layout()
-        _save_fig(fig, output_dir, f"{truth_field}_{pred_field}_{line_type}line", cfg, article_style)
+        _save_fig(
+            fig,
+            output_dir,
+            f"{truth_field}_{pred_field}_{line_type}line",
+            cfg,
+            article_style,
+        )
 
 
 def plot_lines_multi(
@@ -372,21 +435,43 @@ def plot_lines_multi(
 
             # Truth from first model
             first_data = ts_models[model_names[0]]
-            ax.plot(line_points_axis, first_data[truth_field], label="Ground Truth", **cfg["truth_style"])
+            ax.plot(
+                line_points_axis,
+                first_data[truth_field],
+                label="Ground Truth",
+                **cfg["truth_style"],
+            )
             truth_arr = np.asarray(first_data[truth_field])
             margin_arr = 0.05 * np.abs(truth_arr)
-            ax.fill_between(line_points_axis, truth_arr - margin_arr, truth_arr + margin_arr,
-                            color="gray", alpha=cfg["error_margin_alpha"], label=r"$\pm$5% margin")
+            ax.fill_between(
+                line_points_axis,
+                truth_arr - margin_arr,
+                truth_arr + margin_arr,
+                color="gray",
+                alpha=cfg["error_margin_alpha"],
+                label=r"$\pm$5% margin",
+            )
 
             # Predictions per model
             for j, mn in enumerate(model_names):
-                ax.plot(line_points_axis, ts_models[mn][pred_field],
-                        color=palette[j % len(palette)], linewidth=cfg["line_width"],
-                        alpha=0.7, label=_format_name(mn))
+                ax.plot(
+                    line_points_axis,
+                    ts_models[mn][pred_field],
+                    color=palette[j % len(palette)],
+                    linewidth=cfg["line_width"],
+                    alpha=0.7,
+                    label=_format_name(mn),
+                )
 
             if article_style:
-                ax.text(0.5, 0.92, f"Step {ts_key}", transform=ax.transAxes,
-                        ha="center", fontsize=cfg["title_size"])
+                ax.text(
+                    0.5,
+                    0.92,
+                    f"Step {ts_key}",
+                    transform=ax.transAxes,
+                    ha="center",
+                    fontsize=cfg["title_size"],
+                )
             else:
                 ax.set_title(f"Step {ts_key}")
             ax.set_xlabel(rf"${line_type}$-axis")
@@ -400,13 +485,19 @@ def plot_lines_multi(
             axs_flat[j].set_visible(False)
 
         fig.tight_layout()
-        _save_fig(fig, output_dir, f"comparison_{comparison_criterion}_{truth_field}_{pred_field}_{line_type}line",
-                  cfg, article_style)
+        _save_fig(
+            fig,
+            output_dir,
+            f"comparison_{comparison_criterion}_{truth_field}_{pred_field}_{line_type}line",
+            cfg,
+            article_style,
+        )
 
 
 # ============================================================================
 # 3. Cumulative RMSE plots
 # ============================================================================
+
 
 def plot_cumulated_rmse(
     summary_csv: str,
@@ -437,8 +528,12 @@ def plot_cumulated_rmse(
         mean = sub["cum_rmse_mean"].values
         std = sub["cum_rmse_std"].values
         c = palette[i % len(palette)]
-        ax.plot(t, mean, color=c, linewidth=cfg["line_width"], label=_format_name(model))
-        ax.fill_between(t, mean - std, mean + std, color=c, alpha=cfg["error_band_alpha"])
+        ax.plot(
+            t, mean, color=c, linewidth=cfg["line_width"], label=_format_name(model)
+        )
+        ax.fill_between(
+            t, mean - std, mean + std, color=c, alpha=cfg["error_band_alpha"]
+        )
 
     ax.set_xlabel("Rollout step")
     ax.set_ylabel("Cumulative RMSE")
@@ -477,8 +572,12 @@ def plot_rmse_per_timestep(
         mean = sub["rmse_mean"].values
         std = sub["rmse_std"].values
         c = palette[i % len(palette)]
-        ax.plot(t, mean, color=c, linewidth=cfg["line_width"], label=_format_name(model))
-        ax.fill_between(t, mean - std, mean + std, color=c, alpha=cfg["error_band_alpha"])
+        ax.plot(
+            t, mean, color=c, linewidth=cfg["line_width"], label=_format_name(model)
+        )
+        ax.fill_between(
+            t, mean - std, mean + std, color=c, alpha=cfg["error_band_alpha"]
+        )
 
     ax.set_xlabel("Rollout step")
     ax.set_ylabel("RMSE")
@@ -494,6 +593,7 @@ def plot_rmse_per_timestep(
 # ============================================================================
 # 4. Per-case RMSE bar chart
 # ============================================================================
+
 
 def plot_case_rmse_bars(
     per_case_dir: str,
@@ -570,6 +670,7 @@ def plot_case_rmse_bars(
 # 5. Drag / Lift curves
 # ============================================================================
 
+
 def plot_forces(
     forces_dir: str,
     output_dir: str,
@@ -585,10 +686,13 @@ def plot_forces(
     _apply_style(cfg)
     palette = cfg.get("palette", PLOT_CONFIG["palette"])
 
-    model_dirs = sorted([
-        d for d in os.listdir(forces_dir)
-        if os.path.isdir(os.path.join(forces_dir, d)) and d != "truth"
-    ])
+    model_dirs = sorted(
+        [
+            d
+            for d in os.listdir(forces_dir)
+            if os.path.isdir(os.path.join(forces_dir, d)) and d != "truth"
+        ]
+    )
     if not model_dirs:
         print(f"[plot] No model subdirs in {forces_dir}")
         return
@@ -609,15 +713,25 @@ def plot_forces(
                     case_norm = _normalize_case_id(case_name)
                     candidates = sorted(glob.glob(os.path.join(truth_dir, "*.csv")))
                     matched = [
-                        p for p in candidates
+                        p
+                        for p in candidates
                         if _normalize_case_id(Path(p).stem) == case_norm
                     ]
                     if len(matched) == 1:
                         truth_csv = matched[0]
                 if os.path.exists(truth_csv):
                     df_truth = pd.read_csv(truth_csv)
-                    x_truth = df_truth["rollout_step"] if "rollout_step" in df_truth.columns else np.arange(len(df_truth))
-                    ax.plot(x_truth, df_truth[qty], label="Ground Truth", **cfg["truth_style"])
+                    x_truth = (
+                        df_truth["rollout_step"]
+                        if "rollout_step" in df_truth.columns
+                        else np.arange(len(df_truth))
+                    )
+                    ax.plot(
+                        x_truth,
+                        df_truth[qty],
+                        label="Ground Truth",
+                        **cfg["truth_style"],
+                    )
 
             # Models
             for j, mn in enumerate(model_dirs):
@@ -625,9 +739,19 @@ def plot_forces(
                 if not os.path.exists(csv_path):
                     continue
                 df = pd.read_csv(csv_path)
-                x_pred = df["rollout_step"] if "rollout_step" in df.columns else np.arange(len(df))
-                ax.plot(x_pred, df[qty], color=palette[j % len(palette)],
-                        linewidth=cfg["line_width"], alpha=0.85, label=_format_name(mn))
+                x_pred = (
+                    df["rollout_step"]
+                    if "rollout_step" in df.columns
+                    else np.arange(len(df))
+                )
+                ax.plot(
+                    x_pred,
+                    df[qty],
+                    color=palette[j % len(palette)],
+                    linewidth=cfg["line_width"],
+                    alpha=0.85,
+                    label=_format_name(mn),
+                )
 
             ax.set_xlabel("Rollout step")
             ax.set_ylabel(f"$C_{{{qty[0].upper()}}}$")
@@ -641,6 +765,7 @@ def plot_forces(
 # ============================================================================
 # 6. Sensor truth-vs-pred signal plots
 # ============================================================================
+
 
 def plot_sensor_signals_from_cache(
     signal_root: str,
@@ -656,7 +781,13 @@ def plot_sensor_signals_from_cache(
     cfg = cfg or PLOT_CONFIG
     _apply_style(cfg)
 
-    model_dirs = sorted([d for d in os.listdir(signal_root) if os.path.isdir(os.path.join(signal_root, d))])
+    model_dirs = sorted(
+        [
+            d
+            for d in os.listdir(signal_root)
+            if os.path.isdir(os.path.join(signal_root, d))
+        ]
+    )
     for model in model_dirs:
         case_files = sorted(glob.glob(os.path.join(signal_root, model, "*.json")))
         for case_file in case_files:
@@ -682,13 +813,21 @@ def plot_sensor_signals_from_cache(
 
                 # 3x3 legacy layout, optional compact mode drops last column (3x2)
                 nrows, ncols = 3, (2 if compact else 3)
-                fig, axs = plt.subplots(nrows, ncols, figsize=(20, 10), dpi=cfg.get("dpi", 300), squeeze=False)
+                fig, axs = plt.subplots(
+                    nrows,
+                    ncols,
+                    figsize=(20, 10),
+                    dpi=cfg.get("dpi", 300),
+                    squeeze=False,
+                )
                 axs_flat = axs.flatten()
 
                 # Legacy-like ordering across the 9 sensor panels
                 sensor_names = sorted(sensor_dict.keys())
                 max_panels = nrows * ncols
-                ordered_names = [sensor_names[i] for i in range(min(max_panels, len(sensor_names)))]
+                ordered_names = [
+                    sensor_names[i] for i in range(min(max_panels, len(sensor_names)))
+                ]
 
                 for i, sensor_name in enumerate(ordered_names):
                     ax = axs_flat[i]
@@ -742,7 +881,9 @@ def plot_sensor_signals_from_cache(
                         ax.tick_params(axis="x", labelsize=14)
                         ax.tick_params(axis="y", labelsize=14)
                     else:
-                        ax.set_title(f"${sensor_name[0]}_{{{sensor_name[1:]}}}$", fontsize=16)
+                        ax.set_title(
+                            f"${sensor_name[0]}_{{{sensor_name[1:]}}}$", fontsize=16
+                        )
                         if i == 0:
                             ax.legend(loc="upper right", fontsize=14)
 
@@ -764,6 +905,7 @@ def plot_sensor_signals_from_cache(
 # ============================================================================
 # Sensor & line location map
 # ============================================================================
+
 
 def plot_sensor_and_line_locations(
     domain_dim_dict: Dict[str, float],
@@ -792,13 +934,24 @@ def plot_sensor_and_line_locations(
     for name, coords in sensors.items():
         ax.plot(coords[0], coords[1], "o", color="none", markeredgecolor="black")
         label_txt = f"${name[0]}_{{{name[1:]}}}$" if len(name) > 1 else name
-        ax.annotate(label_txt, (coords[0] + 0.2, coords[1]),
-                    textcoords="offset points", xytext=(5, 5), ha="center")
+        ax.annotate(
+            label_txt,
+            (coords[0] + 0.2, coords[1]),
+            textcoords="offset points",
+            xytext=(5, 5),
+            ha="center",
+        )
 
     if object_origin is not None:
         ax.plot(object_origin[0], object_origin[1], "x", color="red", markersize=10)
-        ax.annotate("Object", (object_origin[0], object_origin[1]),
-                    textcoords="offset points", xytext=(5, 5), ha="center", color="red")
+        ax.annotate(
+            "Object",
+            (object_origin[0], object_origin[1]),
+            textcoords="offset points",
+            xytext=(5, 5),
+            ha="center",
+            color="red",
+        )
 
     for line_name, line_coords in lines.items():
         if line_name.startswith("x"):
@@ -817,6 +970,7 @@ def plot_sensor_and_line_locations(
 # ============================================================================
 # Cumulated error per case (sensor-based)
 # ============================================================================
+
 
 def plot_sensor_cum_error(
     sensor_dir: str,
@@ -846,8 +1000,16 @@ def plot_sensor_cum_error(
         std = data["std"]
         t = np.arange(len(mean))
         c = palette[i % len(palette)]
-        ax.plot(t, mean, color=c, linewidth=cfg["line_width"], label=_format_name(model_name))
-        ax.fill_between(t, mean - std, mean + std, color=c, alpha=cfg["error_band_alpha"])
+        ax.plot(
+            t,
+            mean,
+            color=c,
+            linewidth=cfg["line_width"],
+            label=_format_name(model_name),
+        )
+        ax.fill_between(
+            t, mean - std, mean + std, color=c, alpha=cfg["error_band_alpha"]
+        )
 
     ax.set_xlabel("Rollout step")
     ax.set_ylabel("Cumulated Error")
@@ -864,36 +1026,47 @@ def plot_sensor_cum_error(
 # CLI — run all available plots from pre-computed results
 # ============================================================================
 
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Generate publication-quality plots from postprocessing results."
     )
     p.add_argument(
-        "-d", "--directory", required=True,
+        "-d",
+        "--directory",
+        required=True,
         help="Root results directory (output of compute_errors / compute_forces).",
     )
     p.add_argument(
-        "-o", "--output", default=None,
+        "-o",
+        "--output",
+        default=None,
         help="Plot output directory (defaults to <directory>/plots).",
     )
     p.add_argument(
-        "--article-style", action="store_true",
+        "--article-style",
+        action="store_true",
         help="Use minimal annotation style for camera-ready figures.",
     )
     p.add_argument(
-        "--forces-dir", default=None,
+        "--forces-dir",
+        default=None,
         help="forces/ directory if different from <directory>/forces.",
     )
     p.add_argument(
-        "--truth-dir", default=None,
+        "--truth-dir",
+        default=None,
         help="Ground-truth forces directory for comparison.",
     )
     p.add_argument(
-        "--format", nargs="+", default=["png"],
+        "--format",
+        nargs="+",
+        default=["png"],
         help="Output image format(s), e.g., png pdf svg.",
     )
     p.add_argument(
-        "--compact-sensors", action="store_true",
+        "--compact-sensors",
+        action="store_true",
         help="Use compact sensor layout (drop last subplot column: 3x2 instead of 3x3).",
     )
     return p
@@ -945,7 +1118,9 @@ def main(argv: Optional[List[str]] = None) -> None:
     # --- Forces ---
     forces_dir = args.forces_dir or os.path.join(results_dir, "forces")
     if os.path.isdir(forces_dir):
-        plot_forces(forces_dir, force_out, truth_dir=args.truth_dir, cfg=cfg, article_style=art)
+        plot_forces(
+            forces_dir, force_out, truth_dir=args.truth_dir, cfg=cfg, article_style=art
+        )
         print(f"[plot] Force curves → {force_out}")
 
     print(f"[plot] All plots saved to {out_dir}")
