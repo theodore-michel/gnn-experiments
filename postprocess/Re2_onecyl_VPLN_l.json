@@ -1,0 +1,35 @@
+{
+  "_description": "Postprocess config for onecyl Re2 VPLN l.",
+  "dataset_parameters": {
+    "dt": 0.2,
+    "trajectory_length": 600,
+    "prediction_folder": "/scratch-big/tmichel/GNN/RUNS/NEWCYL/ONECYL_ARTICLE/predictors/onecyl-T-ReX-VPLN-l/predictions/onecyl_Re2_VPLN_l",
+    "path_to_configs_pool": "/scratch-big/tmichel/GNN/DATASETS/dataset_onecyl_Re1e2_gmsh_redo/configs_pool_onecyl_Re2_selected_selected.pkl"
+  },
+  "model_parameters": {
+    "name": "Re2_VPLN_l",
+    "final_base_name": "graph_",
+    "prediction_start_index": 0
+  },
+  "plot_parameters": {
+    "truth_prediction_pairs": {
+      "y0": "x0",
+      "y1": "x1",
+      "y2": "x2"
+    },
+    "points_choice": "auto"
+  },
+  "feature_map": {
+    "velocity_x": "x0",
+    "velocity_y": "x1",
+    "pressure": "x2",
+    "levelset": "x3",
+    "nodetype": "x6"
+  },
+  "physical_parameters": {
+    "mu": 0.01,
+    "rho": 1.0,
+    "U_inf": 1.0,
+    "D": 1.0
+  }
+}

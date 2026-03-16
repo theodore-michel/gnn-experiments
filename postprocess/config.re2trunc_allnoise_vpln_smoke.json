@@ -1,0 +1,27 @@
+{
+  "pred_dir": "/scratch-big/tmichel/GNN/RUNS/NEWCYL/ONECYL_ARTICLE/predictors/onecyl-T-ReX-allnoise-VPLN-l/predictions/onecyl_Re2trunc_allnoise_VPLN_l",
+  "dataset_dir": "/scratch-big/tmichel/GNN/DATASETS/dataset_onecyl_Re1e4_gmsh_trunc/predict",
+  "configs_pool": "/scratch-big/tmichel/GNN/DATASETS/dataset_onecyl_Re1e4_gmsh_trunc/configs_pool_onecyl.pkl",
+  "model_name": "onecyl_Re2trunc_allnoise_VPLN_l",
+  "output_dir": "./results_smoke",
+  "prediction_base_name": "graph_",
+  "feature_map": {
+    "x0": "velocity_x",
+    "x1": "velocity_y",
+    "x2": "pressure",
+    "x3": "levelset",
+    "x6": "nodetype"
+  },
+  "target_map": {
+    "y0": "velocity_x",
+    "y1": "velocity_y",
+    "y2": "pressure"
+  },
+  "target_step_offset": 1,
+  "rollout_steps": 40,
+  "sensor_mode": "auto",
+  "sensor_csv": "",
+  "levelset_source": "prediction",
+  "force_mu": 0.001,
+  "force_workers": 4
+}

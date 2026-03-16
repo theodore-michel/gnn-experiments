@@ -1,24 +1,19 @@
-# gnn-experiments — Directory Tree
-#
-# Each line: relative path — one-line description
+# gnn-experiments — Postprocessing Tree
 
-gnn-experiments/
-├── run_manager.py              # CLI tool (click): register, update, relaunch, compare, sync-sheet
-├── launch.sh                   # Shell wrapper: register + sbatch + capture SLURM job ID
-├── environment.yml             # Conda env spec (name: graph) with all dependencies
-├── schema.yaml                 # Annotated YAML template documenting every run-record field
-├── README.md                   # Setup guide, workflow docs, field reference
-├── TREE.md                     # This file — repository directory tree with descriptions
-├── registry/                   # Per-run YAML records (one file per registered run, git-tracked)
-│   └── <run_id>.yaml           # Example: re100_full_20260305_001.yaml
-└── postprocess/                # Post-processing scaffold (structure only, implementation TBD)
-    ├── __init__.py             # Package marker
-    ├── metrics/                # Error statistics & custom metric computation
-    │   ├── __init__.py         # Package marker
-    │   └── README.md           # Scope: RMSE, MAE, drag/lift, spatial error maps
-    ├── visualization/          # Plotting, ParaView XDMF export, video generation
-    │   ├── __init__.py         # Package marker
-    │   └── README.md           # Scope: matplotlib plots, pyvista renders, mp4/gif
-    └── utils/                  # Shared I/O utilities: XDMF readers, mesh loading
-        ├── __init__.py         # Package marker
-        └── README.md           # Scope: meshio/h5py readers, trajectory matching
+`gnn-experiments/`
+- `README.md` — Postprocessing workflow, assumptions, and usage.
+- `TREE.md` — Repository tree with one-line file descriptions.
+- `environment.yml` — Conda environment specification (`graph`).
+- `run_postprocess.sh` — Top-level launcher for full pipeline, plots-only, and compare modes.
+- `postprocess/__init__.py` — Package marker.
+- `postprocess/config.example.json` — Annotated unified config template.
+- `postprocess/postprocess_xdmf.py` — Script 1: raw prediction XDMF to standardized XDMF.
+- `postprocess/extract_sensors.py` — Script 2: sensor extraction to flat CSV.
+- `postprocess/compute_errors.py` — Script 3: RMSE and cumulative metrics to CSV.
+- `postprocess/compute_forces.py` — Script 4: drag/lift force extraction to CSV with caching.
+- `postprocess/plot_results.py` — Script 5: single-model publication figures from CSV only.
+- `postprocess/compare_models.py` — Script 6: multi-model comparison figures from CSV only.
+- `postprocess/utils/__init__.py` — Utilities package marker.
+- `postprocess/utils/xdmf_io.py` — Consolidated XDMF I/O, case discovery, geometry/sensor helpers.
+- `postprocess/metrics/` — Legacy modules kept for backward compatibility.
+- `postprocess/visualization/` — Legacy plotting modules kept for backward compatibility.

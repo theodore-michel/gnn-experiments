@@ -1,28 +1,12 @@
-"""
-xdmf_io.py — XDMF / mesh I/O utilities for GNN prediction postprocessing.
-
-Provides helpers for:
-  * Reading XDMF time-series into a list of meshio.Mesh objects.
-  * Writing a list of meshio.Mesh objects back to XDMF.
-  * Gathering prediction cases from a directory tree.
-  * Finding nearest mesh nodes for sensor / line coordinates.
-  * Extracting point-data time-series at sensor locations.
-  * Creating auto-sensor grids and line discretisations.
-  * NodeType enum matching the GNN training convention.
-
-All heavy lifting is done through *meshio*; the module has no dependency on
-PyTorch or PyG so it can be used in lightweight post-processing environments.
-"""
-
 from __future__ import annotations
 
-import glob
 import json
 import os
 import pickle
+import re
 from enum import IntEnum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import meshio
 import numpy as np
@@ -30,9 +14,6 @@ import pandas as pd
 from scipy.spatial import cKDTree
 
 
-# ---------------------------------------------------------------------------
-# NodeType enum — mirrors graphphysics.dataset.nodetype
-# ---------------------------------------------------------------------------
 class NodeType(IntEnum):
     NORMAL = 0
     OBSTACLE = 1
@@ -43,502 +24,300 @@ class NodeType(IntEnum):
     WALL_BOUNDARY = 6
 
 
-# ---------------------------------------------------------------------------
-# XDMF read / write
-# ---------------------------------------------------------------------------
+def load_json(path: str | Path) -> Dict[str, Any]:
+    with open(path, "r", encoding="utf-8") as fh:
+        return json.load(fh)
 
 
-def xdmf_to_meshes(
-    xdmf_file_path: str | Path,
-    verbose: bool = False,
-) -> Tuple[List[meshio.Mesh], np.ndarray]:
-    """Read an XDMF time-series file and return (meshes, timesteps).
+def ensure_dir(path: str | Path) -> str:
+    os.makedirs(path, exist_ok=True)
+    return str(path)
 
-    Each element of *meshes* is a ``meshio.Mesh`` sharing the same topology
-    but carrying the point-data for a single timestep.
 
-    Parameters
-    ----------
-    xdmf_file_path : str | Path
-        Path to the ``.xdmf`` file.
-    verbose : bool
-        Print progress information.
+def normalize_case_id(name: str) -> str:
+    match = re.search(r"(\d+)$", str(name))
+    return match.group(1) if match else str(name)
 
-    Returns
-    -------
-    meshes : list[meshio.Mesh]
-        One mesh per timestep.
-    timesteps : np.ndarray
-        1-D array of time stamps read from the file.
-    """
-    xdmf_file_path = str(xdmf_file_path)
+
+def discover_xdmf_cases(
+    folder: str | Path, prefix: Optional[str] = None
+) -> Dict[str, str]:
+    folder = Path(folder)
+    if not folder.exists():
+        return {}
+    if prefix:
+        files = sorted(folder.glob(f"{prefix}*.xdmf"))
+    else:
+        files = sorted(folder.glob("*.xdmf"))
+    cases: Dict[str, str] = {}
+    for fpath in files:
+        stem = fpath.stem
+        if prefix and stem.startswith(prefix):
+            raw_case = stem[len(prefix) :]
+        else:
+            raw_case = stem
+        cases[normalize_case_id(raw_case)] = str(fpath)
+    return dict(
+        sorted(cases.items(), key=lambda kv: int(kv[0]) if kv[0].isdigit() else kv[0])
+    )
+
+
+def read_xdmf_series(path: str | Path) -> Tuple[List[meshio.Mesh], np.ndarray]:
     meshes: List[meshio.Mesh] = []
     timesteps: List[float] = []
-
-    with meshio.xdmf.TimeSeriesReader(xdmf_file_path) as reader:
+    with meshio.xdmf.TimeSeriesReader(str(path)) as reader:
         points, cells = reader.read_points_cells()
-        for k in range(reader.num_steps):
-            t, point_data, _ = reader.read_data(k)
-            timesteps.append(t)
+        for idx in range(reader.num_steps):
+            t, point_data, _ = reader.read_data(idx)
+            timesteps.append(float(t))
             meshes.append(
                 meshio.Mesh(points=points, cells=cells, point_data=point_data)
             )
-
-    timesteps_arr = np.array(timesteps)
-    if verbose:
-        print(
-            f"[xdmf_io] Read {len(meshes)} timesteps from {xdmf_file_path} "
-            f"(t={timesteps_arr[0]:.4g} … {timesteps_arr[-1]:.4g})"
-        )
-    return meshes, timesteps_arr
+    return meshes, np.asarray(timesteps, dtype=float)
 
 
-def meshes_to_xdmf(
-    filename: str | Path,
-    meshes: List[meshio.Mesh],
-    timesteps: np.ndarray | List[float],
-    drop_first: bool = False,
-    verbose: bool = False,
+def write_xdmf_series(
+    path: str | Path, meshes: List[meshio.Mesh], timesteps: np.ndarray
 ) -> None:
-    """Write a list of meshes to an XDMF time-series file.
+    if not meshes:
+        raise ValueError("Cannot write an empty mesh series")
+    path = Path(path).resolve()
+    out_dir = path.parent
+    out_name = path.name
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    Parameters
-    ----------
-    filename : str | Path
-        Output ``.xdmf`` path (companion ``.h5`` written automatically).
-    meshes : list[meshio.Mesh]
-        One mesh per timestep, all sharing the same topology.
-    timesteps : array-like
-        Corresponding time stamp for each mesh.
-    drop_first : bool
-        If *True*, skip the first mesh/timestep (useful when it is an
-        initial-condition duplicate).
-    verbose : bool
-        Print a summary line.
-    """
-    filename = os.path.abspath(str(filename))
-    out_dir = os.path.dirname(filename) or "."
-    os.makedirs(out_dir, exist_ok=True)
-    out_name = os.path.basename(filename)
-
-    start = 1 if drop_first else 0
-    prev_cwd = os.getcwd()
+    prev = Path.cwd()
     try:
         os.chdir(out_dir)
         with meshio.xdmf.TimeSeriesWriter(out_name) as writer:
             writer.write_points_cells(meshes[0].points, meshes[0].cells)
-            for k in range(start, len(meshes)):
-                writer.write_data(float(timesteps[k]), point_data=meshes[k].point_data)
+            for mesh, t in zip(meshes, timesteps):
+                writer.write_data(float(t), point_data=mesh.point_data)
     finally:
-        os.chdir(prev_cwd)
-    if verbose:
-        print(f"[xdmf_io] Wrote {len(meshes) - start} timesteps to {filename}")
+        os.chdir(prev)
 
 
-# ---------------------------------------------------------------------------
-# Case gathering
-# ---------------------------------------------------------------------------
+def feature_key_for_semantic(
+    feature_map: Dict[str, str], semantic: str
+) -> Optional[str]:
+    for key, value in feature_map.items():
+        if value == semantic:
+            return key
+    return None
 
 
-def gather_cases(
-    case_folder: str | Path,
-    case_base_name: str,
-    extension: str = ".xdmf",
-) -> Dict[str, str]:
-    """Scan *case_folder* for XDMF files matching ``<case_base_name><id>.xdmf``.
+def latest_x_feature_key(feature_map: Dict[str, str]) -> str:
+    x_keys = [k for k in feature_map.keys() if k.startswith("x") and k[1:].isdigit()]
+    if not x_keys:
+        raise ValueError("feature_map must contain x* entries")
+    return sorted(x_keys, key=lambda k: int(k[1:]))[-1]
 
-    Returns a dict ``{case_id: full_path}``, sorted by case id.
 
-    Example
-    -------
-    If ``case_folder`` contains ``rollout_config_001.xdmf``, ``rollout_config_002.xdmf``
-    and ``case_base_name="rollout_"`` then the returned dict is
-    ``{"config_001": "/…/rollout_config_001.xdmf", "config_002": "…"}``.
-    """
-    case_folder = str(case_folder)
-    pattern = os.path.join(case_folder, f"{case_base_name}*{extension}")
-    files = sorted(glob.glob(pattern))
-    cases: Dict[str, str] = {}
-    for f in files:
-        basename = os.path.basename(f).replace(extension, "")
-        case_id = basename[len(case_base_name) :]
-        cases[case_id] = f
-    return cases
+def stacked_vector(vx: np.ndarray, vy: np.ndarray) -> np.ndarray:
+    zeros = np.zeros_like(vx)
+    return np.column_stack([vx, vy, zeros])
 
 
 def load_configs_pool(path: str | Path) -> pd.DataFrame:
-    """Load the pickled configs pool (geometry metadata per case)."""
-    with open(str(path), "rb") as fh:
-        return pickle.load(fh)
+    with open(path, "rb") as fh:
+        data = pickle.load(fh)
+    if isinstance(data, pd.DataFrame):
+        return data
+    if isinstance(data, list):
+        return pd.DataFrame(data)
+    raise TypeError(f"Unsupported configs_pool type: {type(data)}")
 
 
-# ---------------------------------------------------------------------------
-# Nearest-node sensor lookup
-# ---------------------------------------------------------------------------
+def _row_case_id(row: pd.Series) -> Optional[str]:
+    for key in ["Config", "config", "case_id", "case", "id"]:
+        if key in row and pd.notna(row[key]):
+            return normalize_case_id(str(row[key]))
+    return None
 
 
-def build_kdtree(points: np.ndarray) -> cKDTree:
-    """Build a *scipy* cKDTree from mesh node coordinates."""
-    return cKDTree(points[:, :2] if points.shape[1] == 3 else points)
+def case_row_from_configs_pool(
+    configs_df: pd.DataFrame, case_id: str
+) -> Optional[pd.Series]:
+    target = normalize_case_id(case_id)
+    for _, row in configs_df.iterrows():
+        rid = _row_case_id(row)
+        if rid == target:
+            return row
+    return None
 
 
-def nearest_node_indices(
-    tree: cKDTree,
-    coords: Dict[str, List[float]],
-) -> Dict[str, int]:
-    """For each named coordinate, find the index of the nearest mesh node.
+def case_reynolds(row: pd.Series) -> float:
+    if row is None:
+        return float("nan")
+    for key in ["Re", "re", "Reynolds", "reynolds"]:
+        if key in row and pd.notna(row[key]):
+            return float(row[key])
+    return float("nan")
 
-    Parameters
-    ----------
-    tree : cKDTree
-        Built from mesh node positions.
-    coords : dict
-        ``{name: [x, y]}`` or ``{name: [x, y, z]}``.
 
-    Returns
-    -------
-    dict
-        ``{name: node_index}``.
+def _scalar_from_row_value(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple, np.ndarray)):
+        if len(value) == 0:
+            return None
+        return float(value[0])
+    return float(value)
+
+
+def case_diameter_proxy(row: pd.Series) -> float:
+    """Return a diameter-like scalar for Reynolds sorting.
+
+    Uses diameter directly when available, otherwise converts radius/radii to
+    diameter. This follows the user's convention that Re is proportional to D.
     """
-    indices: Dict[str, int] = {}
-    for name, xy in coords.items():
-        _, idx = tree.query(np.array(xy[:2]))
-        indices[name] = int(idx)
-    return indices
+    if row is None:
+        return float("nan")
+
+    for key in ["diameter", "Diameter", "D", "d", "obj_diameter"]:
+        if key in row and pd.notna(row[key]):
+            val = _scalar_from_row_value(row[key])
+            if val is not None:
+                return float(val)
+
+    for key in ["radius", "Radius", "r", "radii", "Radii"]:
+        if key in row and pd.notna(row[key]):
+            val = _scalar_from_row_value(row[key])
+            if val is not None:
+                return float(2.0 * val)
+
+    return float("nan")
 
 
-# ---------------------------------------------------------------------------
-# Point-data extraction (single model)
-# ---------------------------------------------------------------------------
+def case_sort_key_from_configs(
+    configs_df: pd.DataFrame, case_id: str
+) -> Tuple[float, str]:
+    row = case_row_from_configs_pool(configs_df, case_id)
+    d_proxy = case_diameter_proxy(row)
+    cid = normalize_case_id(case_id)
+    return d_proxy, cid
 
 
-def extract_point_values(
-    meshes: List[meshio.Mesh],
-    coords_dict: Dict[str, List[float]],
-    fields: List[str],
-) -> Dict[str, Dict[str, List[float]]]:
-    """Extract field time-series at specified coordinates.
+def case_cylinder_geometry(row: pd.Series) -> Tuple[float, float, float]:
+    cx_candidates = ["x_objects", "cx", "center_x", "x_center"]
+    cy_candidates = ["y_objects", "cy", "center_y", "y_center"]
+    d_candidates = ["diameter", "D", "d", "obj_diameter"]
 
-    Parameters
-    ----------
-    meshes : list[meshio.Mesh]
-        One mesh per timestep (same topology).
-    coords_dict : dict
-        ``{sensor_name: [x, y(, z)]}``.
-    fields : list[str]
-        Field names present in ``mesh.point_data``.
+    def _pick(cands: List[str], default: float) -> float:
+        for key in cands:
+            if key in row and pd.notna(row[key]):
+                val = row[key]
+                if isinstance(val, (list, tuple, np.ndarray)):
+                    if len(val) > 0:
+                        return float(val[0])
+                return float(val)
+        return default
 
-    Returns
-    -------
-    dict
-        ``{sensor_name: {field_name: [value_t0, value_t1, …]}}``.
-    """
-    tree = build_kdtree(meshes[0].points)
-    node_indices = nearest_node_indices(tree, coords_dict)
-
-    result: Dict[str, Dict[str, List[float]]] = {}
-    for sensor_name, idx in node_indices.items():
-        result[sensor_name] = {}
-        for field in fields:
-            values = []
-            for mesh in meshes:
-                if field not in mesh.point_data:
-                    raise KeyError(
-                        f"Field '{field}' not in mesh point_data at sensor '{sensor_name}'"
-                    )
-                val = mesh.point_data[field][idx]
-                values.append(
-                    float(val) if np.ndim(val) == 0 else float(np.linalg.norm(val))
-                )
-            result[sensor_name][field] = values
-    return result
+    cx = _pick(cx_candidates, 0.0)
+    cy = _pick(cy_candidates, 0.0)
+    diam = _pick(d_candidates, 1.0)
+    return cx, cy, diam
 
 
-def extract_point_values_multi(
-    model_meshes: Dict[str, List[meshio.Mesh]],
-    coords_dict: Dict[str, List[float]],
-    fields: List[str],
-) -> Dict[str, Dict[str, Dict[str, List[float]]]]:
-    """Extract field time-series at specified coordinates for multiple models.
-
-    Parameters
-    ----------
-    model_meshes : dict
-        ``{model_name: list_of_meshes}``.
-    coords_dict : dict
-        ``{sensor_name: [x, y(, z)]}``.
-    fields : list[str]
-        Field names present in ``mesh.point_data``.
-
-    Returns
-    -------
-    dict
-        ``{sensor_name: {model_name: {field_name: [values…]}}}``.
-    """
-    result: Dict[str, Dict[str, Dict[str, List[float]]]] = {}
-    for model_name, meshes in model_meshes.items():
-        single = extract_point_values(meshes, coords_dict, fields)
-        for sensor_name, field_dict in single.items():
-            result.setdefault(sensor_name, {})[model_name] = field_dict
-    return result
+def default_sensor_offsets() -> Dict[str, Tuple[float, float]]:
+    return {
+        "p1": (-3.0, 0.0),
+        "p2": (-1.5, 1.5),
+        "p3": (-1.5, -1.5),
+        "p4": (1.5, 1.5),
+        "p5": (1.5, -1.5),
+        "p6": (3.0, 0.0),
+        "p7": (0.0, 3.0),
+        "p8": (0.0, -3.0),
+        "p9": (2.0, 0.0),
+    }
 
 
-# ---------------------------------------------------------------------------
-# Auto-sensor / line placement
-# ---------------------------------------------------------------------------
-
-
-def create_auto_sensor_location(
-    domain_dim_dict: Dict[str, float],
-    num_sensors: int = 9,
-    object_center: Optional[List[float]] = None,
+def auto_sensor_coordinates(
+    cx: float,
+    cy: float,
+    diameter: float,
+    points: Optional[np.ndarray] = None,
 ) -> Dict[str, List[float]]:
-    """Create a grid of sensor locations in the wake region downstream of the object.
+    """Create 9 sensors in the wake, inspired by legacy scripts.
 
-    Sensors are placed in a num_rows × num_cols grid that spans from the
-    object centre to roughly half-way downstream, and ±1 diameter vertically.
-
-    Parameters
-    ----------
-    domain_dim_dict : dict
-        Must contain ``x_min``, ``dx``, ``y_min``, ``dy``.
-    num_sensors : int
-        Approximate target count (rounded to a square grid).
-    object_center : list | None
-        ``[x, y, z]`` of the object centre.  Defaults to domain centre.
-
-    Returns
-    -------
-    dict
-        ``{name: [x, y, 0]}`` where *name* encodes row/column (e.g. ``"S01"``).
+    Layout: 3x3 downstream grid beginning near x = cx + 1.5D and spanning
+    approximately to x = cx + 3.5D, with y in [cy-1.5D, cy+1.5D].
     """
-    x_min = domain_dim_dict["x_min"]
-    dx = domain_dim_dict["dx"]
-    y_min = domain_dim_dict["y_min"]
-    dy = domain_dim_dict["dy"]
+    d = max(float(diameter), 1e-6)
+    x_start = cx + 1.5 * d
+    x_end = cx + 3.5 * d
+    y_lo = cy - 1.5 * d
+    y_hi = cy + 1.5 * d
 
-    if object_center is None:
-        cx, cy = x_min + dx / 2, y_min + dy / 2
-    else:
-        cx, cy = object_center[0], object_center[1]
+    if points is not None and len(points) > 0:
+        pts2d = points[:, :2]
+        x_min, y_min = np.min(pts2d, axis=0)
+        x_max, y_max = np.max(pts2d, axis=0)
+        eps = 0.01 * d
+        x_start = float(np.clip(x_start, x_min + eps, x_max - eps))
+        x_end = float(np.clip(x_end, x_min + eps, x_max - eps))
+        y_lo = float(np.clip(y_lo, y_min + eps, y_max - eps))
+        y_hi = float(np.clip(y_hi, y_min + eps, y_max - eps))
 
-    # wake region: from object to 60 % downstream, ±30 % of dy centred on object
-    x_start = cx + 0.5
-    x_end = min(cx + 0.5 * dx, x_min + dx - 0.5)
-    y_lo = max(cy - 0.3 * dy, y_min + 0.1)
-    y_hi = min(cy + 0.3 * dy, y_min + dy - 0.1)
-
-    ncols = max(int(np.ceil(np.sqrt(num_sensors))), 2)
-    nrows = max(int(np.ceil(num_sensors / ncols)), 2)
-
-    xs = np.linspace(x_start, x_end, ncols)
-    ys = np.linspace(y_lo, y_hi, nrows)
+    xs = np.linspace(x_start, x_end, 3)
+    ys = np.linspace(y_hi, y_lo, 3)
 
     sensors: Dict[str, List[float]] = {}
-    k = 0
-    for yy in ys:
-        for xx in xs:
-            sensors[f"S{k:02d}"] = [float(xx), float(yy), 0.0]
+    k = 1
+    for y in ys:
+        for x in xs:
+            sensors[f"p{k}"] = [float(x), float(y), 0.0]
             k += 1
     return sensors
 
 
-def create_auto_line_location(
-    object_center: List[float],
-    wake_margin: float = 1.0,
-) -> Dict[str, List[float]]:
-    """Return canonical x-line and y-line origins for profile extraction.
-
-    Parameters
-    ----------
-    object_center : list
-        ``[x, y, z]`` of the object centre.
-    wake_margin : float
-        Downstream offset for the y-line from the object centre.
-
-    Returns
-    -------
-    dict
-        ``{"x_line": [x0, y0, 0], "y_line": [x0, y0, 0]}``.
-    """
-    cx, cy = object_center[0], object_center[1]
-    return {
-        "x_line": [cx, cy, 0.0],
-        "y_line": [cx + wake_margin, cy, 0.0],
-    }
+def nearest_node_indices(
+    points: np.ndarray, coords: Dict[str, List[float]]
+) -> Dict[str, int]:
+    pts2d = points[:, :2] if points.shape[1] >= 2 else points
+    tree = cKDTree(pts2d)
+    out: Dict[str, int] = {}
+    for sid, xyz in coords.items():
+        _, idx = tree.query(np.asarray(xyz[:2], dtype=float))
+        out[sid] = int(idx)
+    return out
 
 
-def create_line_points_dict(
-    line_axis: str,
-    line_origins: List[float],
-    domain_dim_dict: Dict[str, float],
-    num_points: int = 200,
-) -> Tuple[Dict[str, List[float]], np.ndarray]:
-    """Discretise a line (x or y) across the domain for profile extraction.
-
-    Parameters
-    ----------
-    line_axis : str
-        ``"x"`` or ``"y"``.
-    line_origins : list
-        ``[x0, y0, z0]`` — the line passes through this point.
-    domain_dim_dict : dict
-        Must contain ``x_min``, ``dx``, ``y_min``, ``dy``.
-    num_points : int
-        Number of sample points along the line.
-
-    Returns
-    -------
-    points_dict : dict
-        ``{point_name: [x, y, z]}``.
-    axis_values : np.ndarray
-        The varying coordinate values (for plotting).
-    """
-    x_min, dx = domain_dim_dict["x_min"], domain_dim_dict["dx"]
-    y_min, dy = domain_dim_dict["y_min"], domain_dim_dict["dy"]
-
-    if line_axis == "x":
-        axis_values = np.linspace(x_min, x_min + dx, num_points)
-        points = {
-            f"L{i:04d}": [float(v), line_origins[1], 0.0]
-            for i, v in enumerate(axis_values)
-        }
-    elif line_axis == "y":
-        axis_values = np.linspace(y_min, y_min + dy, num_points)
-        points = {
-            f"L{i:04d}": [line_origins[0], float(v), 0.0]
-            for i, v in enumerate(axis_values)
-        }
-    else:
-        raise ValueError(f"line_axis must be 'x' or 'y', got '{line_axis}'")
-    return points, axis_values
+def read_case_levelset_from_dataset(
+    dataset_dir: str | Path, case_id: str
+) -> np.ndarray:
+    target = normalize_case_id(case_id)
+    for xdmf in sorted(Path(dataset_dir).glob("*.xdmf")):
+        if normalize_case_id(xdmf.stem) != target:
+            continue
+        meshes, _ = read_xdmf_series(xdmf)
+        if not meshes:
+            break
+        pdata = meshes[0].point_data
+        if "LevelSetObject" in pdata:
+            return np.asarray(pdata["LevelSetObject"]).reshape(-1)
+        if "levelset" in pdata:
+            return np.asarray(pdata["levelset"]).reshape(-1)
+    raise FileNotFoundError(
+        f"Could not find levelset for case {case_id} under dataset_dir={dataset_dir}"
+    )
 
 
-# ---------------------------------------------------------------------------
-# Field renaming / vector-field creation helpers
-# ---------------------------------------------------------------------------
+def crop_rollout(
+    meshes: List[meshio.Mesh], timesteps: np.ndarray, rollout_steps: Optional[int]
+) -> Tuple[List[meshio.Mesh], np.ndarray]:
+    if rollout_steps is None:
+        return meshes, timesteps
+    n = max(0, min(int(rollout_steps), len(meshes)))
+    return meshes[:n], timesteps[:n]
 
 
-def rename_fields(
-    meshes: List[meshio.Mesh],
-    field_map: Dict[str, str],
-) -> List[meshio.Mesh]:
-    """Rename point-data fields in-place according to *field_map* (old→new)."""
-    for mesh in meshes:
-        for old, new in field_map.items():
-            if old in mesh.point_data:
-                mesh.point_data[new] = mesh.point_data.pop(old)
-    return meshes
+def save_json(path: str | Path, payload: Dict[str, Any]) -> None:
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, indent=2)
 
 
-def create_vector_field(
-    mesh: meshio.Mesh,
-    field_name: str,
-    field_scalars: List[str],
-    fill: bool = True,
-) -> meshio.Mesh:
-    """Combine scalar components into a vector point-data field.
-
-    Parameters
-    ----------
-    mesh : meshio.Mesh
-    field_name : str
-        Name for the resulting vector field (e.g. ``"V_vect_pred"``).
-    field_scalars : list[str]
-        Ordered component field names, e.g. ``["V_x_pred", "V_y_pred"]``.
-    fill : bool
-        If *True* and fewer than 3 components are given, pad with zeros
-        to produce a 3-component vector (for ParaView compatibility).
-    """
-    components = [mesh.point_data[s] for s in field_scalars]
-    n = len(components[0])
-    if fill and len(components) < 3:
-        components.append(np.zeros(n))
-    mesh.point_data[field_name] = np.column_stack(components)
-    return mesh
-
-
-def create_norm_field(
-    mesh: meshio.Mesh,
-    field_name: str,
-    components: List[str],
-) -> meshio.Mesh:
-    """Create a scalar norm field from vector components."""
-    arrays = [mesh.point_data[c] for c in components]
-    mesh.point_data[field_name] = np.linalg.norm(np.column_stack(arrays), axis=1)
-    return mesh
-
-
-# ---------------------------------------------------------------------------
-# Serialisation helpers (numpy → JSON-safe)
-# ---------------------------------------------------------------------------
-
-
-def convert_np(obj: Any) -> Any:
-    """Recursively convert numpy types to Python builtins for JSON serialisation."""
-    if isinstance(obj, np.integer):
-        return int(obj)
-    if isinstance(obj, np.floating):
-        return float(obj)
-    if isinstance(obj, np.ndarray):
-        return obj.tolist()
-    if isinstance(obj, dict):
-        return {k: convert_np(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [convert_np(v) for v in obj]
-    return obj
-
-
-def save_sensor_data(
-    data_dict: Dict[str, Any],
-    output_location: str,
-    suffix: Optional[str] = None,
-    fmt: str = "json",
-    verbose: bool = False,
-) -> str:
-    """Persist sensor time-series data to JSON or CSV.
-
-    Returns the written file path.
-    """
-    os.makedirs(output_location, exist_ok=True)
-    tag = f"_{suffix}" if suffix else ""
-    out_path = os.path.join(output_location, f"sensor_data{tag}.{fmt}")
-    if fmt == "json":
-        with open(out_path, "w") as f:
-            json.dump(convert_np(data_dict), f, indent=2)
-    elif fmt == "csv":
-        df = pd.DataFrame.from_dict(data_dict, orient="index")
-        df.to_csv(out_path, index_label="Sensor")
-    else:
-        raise ValueError(f"Unsupported format '{fmt}'")
-    if verbose:
-        print(f"[xdmf_io] Saved sensor data → {out_path}")
-    return out_path
-
-
-def load_sensor_data(
-    location: str,
-    suffix: Optional[str] = None,
-    fmt: str = "json",
-) -> Dict[str, Any]:
-    """Load sensor time-series data from JSON or CSV."""
-    tag = f"_{suffix}" if suffix else ""
-    path = os.path.join(location, f"sensor_data{tag}.{fmt}")
-    if fmt == "json":
-        with open(path) as f:
-            return json.load(f)
-    elif fmt == "csv":
-        df = pd.read_csv(path, index_col="Sensor")
-        return df.to_dict(orient="index")
-    raise ValueError(f"Unsupported format '{fmt}'")
-
-
-# ---------------------------------------------------------------------------
-# Config loader
-# ---------------------------------------------------------------------------
-
-
-def load_json(path: str | Path) -> Dict[str, Any]:
-    """Load a JSON configuration file."""
-    with open(str(path)) as f:
-        return json.load(f)
+def iter_force_csvs(forces_dir: str | Path) -> Iterable[Path]:
+    for csv_path in sorted(Path(forces_dir).glob("forces_*.csv")):
+        yield csv_path
