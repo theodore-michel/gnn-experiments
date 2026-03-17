@@ -34,9 +34,12 @@ PLOT_CONFIG = {
     "pred_linestyle": "-",
     "pred_linewidth": 2.25,
     "pred_alpha": 0.8,
+    "rmse_linewidth": 1.8,
     "palette": ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"],
     "std_alpha": 0.3,
     "bar_truth_color": "#7f7f7f",
+    "legend_face_alpha": 0.4,
+    "legend_edge_color": "black",
     "fontsize_title": 19,
     "fontsize_axis": 19,
     "fontsize_ticks": 17,
@@ -89,9 +92,50 @@ def _apply_rollout_axis(ax: plt.Axes) -> None:
     ax.set_xticks(_rollout_xticks())
 
 
+def _apply_sensor_rollout_axis(ax: plt.Axes) -> None:
+    if PLOT_CONFIG["sensor_drop_last_column"]:
+        ax.set_xlim(300, int(PLOT_CONFIG["rollout_end"]))
+        ax.set_xticks([300, 400, 500, int(PLOT_CONFIG["rollout_end"])])
+    else:
+        _apply_rollout_axis(ax)
+
+
 def _lighten_color(color: str, blend: float = 0.75) -> tuple:
     rgb = np.array(mcolors.to_rgb(color))
     return tuple((1.0 - blend) * rgb + blend * np.ones(3))
+
+
+def _ordered_sensor_ids(sensor_ids: List[str], cropped: bool) -> List[str]:
+    # Physical layout:
+    # top row    -> p3 p6 p9
+    # middle row -> p2 p5 p8
+    # bottom row -> p1 p4 p7
+    layout = [
+        ["p3", "p6", "p9"],
+        ["p2", "p5", "p8"],
+        ["p1", "p4", "p7"],
+    ]
+    if cropped:
+        layout = [row[:2] for row in layout]
+
+    available = {sid.lower(): sid for sid in sensor_ids}
+    ordered = []
+    for row in layout:
+        for sid in row:
+            if sid in available:
+                ordered.append(available[sid])
+
+    remaining = [sid for sid in sensor_ids if sid not in ordered]
+    return ordered + remaining
+
+
+def _style_legend(legend: Optional[matplotlib.legend.Legend]) -> None:
+    if legend is None:
+        return
+    frame = legend.get_frame()
+    frame.set_facecolor((1.0, 1.0, 1.0, PLOT_CONFIG["legend_face_alpha"]))
+    frame.set_edgecolor(mcolors.to_rgba(PLOT_CONFIG["legend_edge_color"], alpha=1.0))
+    frame.set_linewidth(1.0)
 
 
 def _save(fig: plt.Figure, out_dir: Path, stem: str) -> None:
@@ -121,13 +165,17 @@ def _plot_sensors(
     cases = _sorted_cases_by_re(df["case_id"].astype(str).unique().tolist(), configs_df)
     for case_id in tqdm(cases, desc="Plot sensor cases"):
         dcase = df[df["case_id"].astype(str) == case_id]
-        sensor_ids = sorted(dcase["sensor_id"].astype(str).unique())
+        sensor_ids = _ordered_sensor_ids(
+            sorted(dcase["sensor_id"].astype(str).unique()),
+            cropped=PLOT_CONFIG["sensor_drop_last_column"],
+        )
         for truth_col, pred_col, field_label in [
             ("v_targ", "v_pred", "velocity"),
             ("p_targ", "p_pred", "pressure"),
         ]:
             max_panels = 6 if PLOT_CONFIG["sensor_drop_last_column"] else 9
             ncols = 2 if max_panels == 6 else 3
+            sensor_suffix = "_cropped" if PLOT_CONFIG["sensor_drop_last_column"] else ""
             fig, axs = plt.subplots(
                 3, ncols, figsize=PLOT_CONFIG["fig_sensor"], squeeze=False
             )
@@ -179,7 +227,7 @@ def _plot_sensors(
                     ax.set_ylim(*PLOT_CONFIG["sensor_ylim_pressure"])
                     ax.set_yticks(PLOT_CONFIG["sensor_yticks_pressure"])
 
-                _apply_rollout_axis(ax)
+                _apply_sensor_rollout_axis(ax)
 
                 # Only one y-label (middle-left) and one x-label (bottom-middle)
                 row_i = i // ncols
@@ -203,12 +251,13 @@ def _plot_sensors(
 
                 _box_spines(ax)
                 if i == 0:
-                    ax.legend(loc="lower center", ncol=1)
+                    legend = ax.legend(loc="lower center", ncol=1)
+                    _style_legend(legend)
 
             for j in range(len(sensor_ids[:max_panels]), 3 * ncols):
                 axs.flatten()[j].set_visible(False)
             fig.tight_layout(pad=0.6)
-            _save(fig, figures_dir, f"sensor_{field_label}_{case_id}")
+            _save(fig, figures_dir, f"sensor_{field_label}_{case_id}{sensor_suffix}")
 
 
 def _plot_forces(model_root: Path, figures_dir: Path, model_label: str) -> None:
@@ -238,7 +287,8 @@ def _plot_forces(model_root: Path, figures_dir: Path, model_label: str) -> None:
             label=model_label,
         )
         axs[0].set_ylabel(r"$F_x$ [$N$]")
-        axs[0].legend(loc="upper left")
+        legend = axs[0].legend(loc="upper left")
+        _style_legend(legend)
         _apply_rollout_axis(axs[0])
         _box_spines(axs[0])
 
@@ -279,12 +329,18 @@ def _plot_rmse(
         d = pd.read_csv(case_csv)
         cid = case_csv.stem.replace("cumulative_rmse_", "")
         fig, ax = plt.subplots(figsize=PLOT_CONFIG["fig_rmse"])
-        ax.plot(d["timestep"], d["cum_rmse_total"], label="total")
+        ax.plot(
+            d["timestep"],
+            d["cum_rmse_total"],
+            label="total",
+            linewidth=PLOT_CONFIG["rmse_linewidth"],
+        )
         ax.set_xlabel("Rollout step")
         ax.set_ylabel("Cumulative RMSE")
         _apply_rollout_axis(ax)
         ax.set_ylim(bottom=0.0)
-        ax.legend(loc="upper left")
+        legend = ax.legend(loc="upper left")
+        _style_legend(legend)
         _box_spines(ax)
         fig.tight_layout()
         _save(fig, figures_dir, f"cumulative_rmse_{cid}")
@@ -293,13 +349,14 @@ def _plot_rmse(
     x = cum_mean["timestep"].to_numpy()
     m = cum_mean["cum_rmse_total_mean"].to_numpy()
     s = cum_mean["cum_rmse_total_std"].to_numpy()
-    ax.plot(x, m, label="total")
+    ax.plot(x, m, label="total", linewidth=PLOT_CONFIG["rmse_linewidth"])
     ax.fill_between(x, m - s, m + s, alpha=PLOT_CONFIG["std_alpha"])
     ax.set_xlabel("Rollout step")
     ax.set_ylabel("Cumulative RMSE")
     _apply_rollout_axis(ax)
     ax.set_ylim(bottom=0.0)
-    ax.legend(loc="upper left")
+    legend = ax.legend(loc="upper left")
+    _style_legend(legend)
     _box_spines(ax)
     fig.tight_layout()
     _save(fig, figures_dir, "cumulative_rmse_mean")
@@ -339,7 +396,8 @@ def _plot_rmse(
     ax.tick_params(axis="x", rotation=45)
     for lbl in ax.get_xticklabels():
         lbl.set_ha("right")
-    ax.legend(loc="upper right")
+    legend = ax.legend(loc="upper right")
+    _style_legend(legend)
     _box_spines(ax)
     fig.tight_layout()
     _save(fig, figures_dir, "per_case_rmse_bar")
@@ -390,7 +448,8 @@ def _plot_force_bars(
             ax.set_ylabel(r"$F_x$ [$N$]")
         else:
             ax.set_ylabel(r"$F_y$ fluctuation [$N$]")
-        ax.legend(loc="upper right")
+        legend = ax.legend(loc="upper left")
+        _style_legend(legend)
         ax.tick_params(axis="x", rotation=45)
         for lbl in ax.get_xticklabels():
             lbl.set_ha("right")
@@ -399,10 +458,16 @@ def _plot_force_bars(
         _save(fig, figures_dir, f"force_bar_{comp}")
 
 
-def run(config_path: str, output_override: Optional[str]) -> None:
+def run(
+    config_path: str,
+    output_override: Optional[str],
+    only: str = "all",
+    sensor_drop_last_column_override: bool = False,
+) -> None:
     cfg = load_json(config_path)
     PLOT_CONFIG["sensor_drop_last_column"] = bool(
-        cfg.get("sensor_drop_last_column", PLOT_CONFIG["sensor_drop_last_column"])
+        sensor_drop_last_column_override
+        or cfg.get("sensor_drop_last_column", PLOT_CONFIG["sensor_drop_last_column"])
     )
     _setup_style()
 
@@ -413,10 +478,13 @@ def run(config_path: str, output_override: Optional[str]) -> None:
     figures_dir = Path(output_override) if output_override else model_root / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
 
-    _plot_sensors(model_root, figures_dir, model_label, configs_df)
-    _plot_forces(model_root, figures_dir, model_label)
-    _plot_rmse(model_root, figures_dir, cfg, model_label)
-    _plot_force_bars(model_root, figures_dir, cfg, model_label)
+    if only in {"all", "sensors"}:
+        _plot_sensors(model_root, figures_dir, model_label, configs_df)
+    if only in {"all", "forces"}:
+        _plot_forces(model_root, figures_dir, model_label)
+        _plot_force_bars(model_root, figures_dir, cfg, model_label)
+    if only in {"all", "rmse"}:
+        _plot_rmse(model_root, figures_dir, cfg, model_label)
     print(f"[plot_results] Figures written to {figures_dir}")
 
 
@@ -428,12 +496,23 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output_dir", default=None, help="Optional custom output figure directory"
     )
+    parser.add_argument(
+        "--only",
+        choices=["all", "sensors", "rmse", "forces"],
+        default="all",
+        help="Restrict plotting to one figure family",
+    )
+    parser.add_argument(
+        "--sensor-drop-last-column",
+        action="store_true",
+        help="Override config and use 3x2 cropped sensor layout",
+    )
     return parser
 
 
 def main() -> None:
     args = build_parser().parse_args()
-    run(args.config, args.output_dir)
+    run(args.config, args.output_dir, args.only, args.sensor_drop_last_column)
 
 
 if __name__ == "__main__":

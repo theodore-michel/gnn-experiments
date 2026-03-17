@@ -40,6 +40,7 @@ See [postprocess/config.example.json](postprocess/config.example.json) for a ful
 |------|---------|
 | **Postprocess one model** | `bash run_postprocess.sh postprocess/config.my_model.json` |
 | **Replot without recompute** | `bash run_postprocess.sh --plots-only postprocess/config.my_model.json` |
+| **Replot only sensors (cropped)** | `bash run_postprocess.sh --plots-only configs/config.re4trunc_allnoise_vpn_l.json --only sensors --sensor-drop-last-column` |
 | **Compare multiple models** | `bash run_postprocess.sh --compare postprocess/config.base.json --models ./res/mA ./res/mB --output_dir ./comparison` |
 | **Process batch (local)** | `bash batch_postprocess.sh config.A.json config.B.json config.C.json` |
 | **Process batch (SLURM)** | `bash postprocess/submit_postprocess.slurm.sh config.A.json config.B.json` |
@@ -81,6 +82,15 @@ bash run_postprocess.sh --plots-only postprocess/config.my_model.json \
   --output_dir ./results/my_custom_output
 ```
 
+Rerun only the sensor plots with cropped 3x2 layout, without touching errors/forces/RMSE plots:
+
+```bash
+bash run_postprocess.sh --plots-only configs/config.re4trunc_allnoise_vpn_l.json \
+  --only sensors \
+  --sensor-drop-last-column \
+  --output_dir ./results_ReX_allnoise/onecyl_Re4trunc_allnoise_VPN_l/figures_cropped_sensors
+```
+
 ---
 
 ## Use Case: Multi-Model Comparison
@@ -103,6 +113,20 @@ bash run_postprocess.sh --compare postprocess/config.re2trunc_allnoise_vpln_smok
     ./results_full/onecyl_Re2trunc_allnoise_VPLN_l \
   --nicknames "Smoke" "Full" \
   --output_dir ./results/comparison_smoke_vs_full
+```
+
+Example with your actual naming, rerunning only cropped comparison sensor plots for Re4:
+
+```bash
+bash run_postprocess.sh --compare configs/config.re4trunc_allnoise_vpln_l.json \
+  --models \
+    results_ReX_allnoise/onecyl_Re4trunc_allnoise_VPN_l \
+    results_ReX_allnoise/onecyl_Re4trunc_allnoise_VPLN_l \
+    results_ReX_allnoise/onecyl_Re4trunc_allnoise_VPLN_ld \
+  --nicknames "Re4 VPN-l" "Re4 VPLN-l" "Re4 VPLN-ld" \
+  --only sensors \
+  --sensor-drop-last-column \
+  --output_dir results_ReX_allnoise/comparison_Re4_cropped_sensors
 ```
 
 **Requirements:**
@@ -203,6 +227,36 @@ rm results/model_name/forces/forces_*.csv
 
 Then recompute forces.
 
+For sensor-only reruns, no cache deletion is needed because plots are regenerated directly from existing `sensors/sensor_data.csv`.
+
+### Rerun All Sensor Plots Cropped
+
+To rerun all single-model sensor plots only, with the last sensor column dropped:
+
+```bash
+bash run_postprocess.sh --plots-only configs/config.re2trunc_allnoise_vpn_l.json --only sensors --sensor-drop-last-column --output_dir results_ReX_allnoise/onecyl_Re2trunc_allnoise_VPN_l/figures_cropped_sensors
+bash run_postprocess.sh --plots-only configs/config.re2trunc_allnoise_vpln_l.json --only sensors --sensor-drop-last-column --output_dir results_ReX_allnoise/onecyl_Re2trunc_allnoise_VPLN_l/figures_cropped_sensors
+bash run_postprocess.sh --plots-only configs/config.re2trunc_allnoise_vpln_ld.json --only sensors --sensor-drop-last-column --output_dir results_ReX_allnoise/onecyl_Re2trunc_allnoise_VPLN_ld/figures_cropped_sensors
+
+bash run_postprocess.sh --plots-only configs/config.re3trunc_allnoise_vpn_l.json --only sensors --sensor-drop-last-column --output_dir results_ReX_allnoise/onecyl_Re3trunc_allnoise_VPN_l/figures_cropped_sensors
+bash run_postprocess.sh --plots-only configs/config.re3trunc_allnoise_vpln_l.json --only sensors --sensor-drop-last-column --output_dir results_ReX_allnoise/onecyl_Re3trunc_allnoise_VPLN_l/figures_cropped_sensors
+bash run_postprocess.sh --plots-only configs/config.re3trunc_allnoise_vpln_ld.json --only sensors --sensor-drop-last-column --output_dir results_ReX_allnoise/onecyl_Re3trunc_allnoise_VPLN_ld/figures_cropped_sensors
+
+bash run_postprocess.sh --plots-only configs/config.re4trunc_allnoise_vpn_l.json --only sensors --sensor-drop-last-column --output_dir results_ReX_allnoise/onecyl_Re4trunc_allnoise_VPN_l/figures_cropped_sensors
+bash run_postprocess.sh --plots-only configs/config.re4trunc_allnoise_vpln_l.json --only sensors --sensor-drop-last-column --output_dir results_ReX_allnoise/onecyl_Re4trunc_allnoise_VPLN_l/figures_cropped_sensors
+bash run_postprocess.sh --plots-only configs/config.re4trunc_allnoise_vpln_ld.json --only sensors --sensor-drop-last-column --output_dir results_ReX_allnoise/onecyl_Re4trunc_allnoise_VPLN_ld/figures_cropped_sensors
+```
+
+To rerun all three comparison sensor-plot sets only, cropped:
+
+```bash
+bash run_postprocess.sh --compare configs/config.re2trunc_allnoise_vpln_l.json --models results_ReX_allnoise/onecyl_Re2trunc_allnoise_VPN_l results_ReX_allnoise/onecyl_Re2trunc_allnoise_VPLN_l results_ReX_allnoise/onecyl_Re2trunc_allnoise_VPLN_ld --nicknames "Re2 VPN-l" "Re2 VPLN-l" "Re2 VPLN-ld" --only sensors --sensor-drop-last-column --output_dir results_ReX_allnoise/comparison_Re2_cropped_sensors
+
+bash run_postprocess.sh --compare configs/config.re3trunc_allnoise_vpln_l.json --models results_ReX_allnoise/onecyl_Re3trunc_allnoise_VPN_l results_ReX_allnoise/onecyl_Re3trunc_allnoise_VPLN_l results_ReX_allnoise/onecyl_Re3trunc_allnoise_VPLN_ld --nicknames "Re3 VPN-l" "Re3 VPLN-l" "Re3 VPLN-ld" --only sensors --sensor-drop-last-column --output_dir results_ReX_allnoise/comparison_Re3_cropped_sensors
+
+bash run_postprocess.sh --compare configs/config.re4trunc_allnoise_vpln_l.json --models results_ReX_allnoise/onecyl_Re4trunc_allnoise_VPN_l results_ReX_allnoise/onecyl_Re4trunc_allnoise_VPLN_l results_ReX_allnoise/onecyl_Re4trunc_allnoise_VPLN_ld --nicknames "Re4 VPN-l" "Re4 VPLN-l" "Re4 VPLN-ld" --only sensors --sensor-drop-last-column --output_dir results_ReX_allnoise/comparison_Re4_cropped_sensors
+```
+
 ---
 
 ## Quick Command Cookbook
@@ -220,7 +274,7 @@ Copy and adapt as `postprocess/config.my_run.json`:
   "configs_pool": "/abs/path/to/configs_pool.pkl",
   "model_name": "my_model_run",
   "model_shortname": "MyModel",
-  "output_dir": "./results_full",
+  "output_dir": "./results_ReX_allnoise",
   "prediction_base_name": "graph_",
   "feature_map": {
     "x0": "velocity_x",

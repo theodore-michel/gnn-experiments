@@ -10,6 +10,8 @@ PLOTS_ONLY=false
 COMPARE=false
 CONFIG=""
 OUT_OVERRIDE=""
+ONLY_PLOTS="all"
+SENSOR_DROP_LAST_COLUMN=false
 MODELS=()
 NICKNAMES=()
 
@@ -17,8 +19,8 @@ print_help() {
   cat <<'EOF'
 Usage:
   bash run_postprocess.sh config.json
-  bash run_postprocess.sh --plots-only config.json [--output_dir DIR]
-  bash run_postprocess.sh --compare config.json --models DIR1 DIR2 [...] [--nicknames N1 N2 ...] --output_dir DIR
+  bash run_postprocess.sh --plots-only config.json [--output_dir DIR] [--only sensors|rmse|forces|all] [--sensor-drop-last-column]
+  bash run_postprocess.sh --compare config.json --models DIR1 DIR2 [...] [--nicknames N1 N2 ...] --output_dir DIR [--only sensors|rmse|forces|all] [--sensor-drop-last-column]
 EOF
 }
 
@@ -54,6 +56,14 @@ while [[ $# -gt 0 ]]; do
       OUT_OVERRIDE="$2"
       shift 2
       ;;
+    --only)
+      ONLY_PLOTS="$2"
+      shift 2
+      ;;
+    --sensor-drop-last-column)
+      SENSOR_DROP_LAST_COLUMN=true
+      shift
+      ;;
     *)
       if [[ -z "$CONFIG" ]]; then
         CONFIG="$1"
@@ -71,6 +81,11 @@ if [[ -z "$CONFIG" ]]; then
   exit 1
 fi
 
+if [[ "$ONLY_PLOTS" != "all" && "$ONLY_PLOTS" != "sensors" && "$ONLY_PLOTS" != "rmse" && "$ONLY_PLOTS" != "forces" ]]; then
+  echo "--only must be one of: sensors, rmse, forces, all"
+  exit 1
+fi
+
 if [[ "$COMPARE" == true ]]; then
   if [[ ${#MODELS[@]} -eq 0 ]]; then
     echo "--compare requires --models"
@@ -84,16 +99,28 @@ if [[ "$COMPARE" == true ]]; then
   if [[ ${#NICKNAMES[@]} -gt 0 ]]; then
     CMD+=(--nicknames "${NICKNAMES[@]}")
   fi
+  if [[ "$ONLY_PLOTS" != "all" ]]; then
+    CMD+=(--only "$ONLY_PLOTS")
+  fi
+  if [[ "$SENSOR_DROP_LAST_COLUMN" == true ]]; then
+    CMD+=(--sensor-drop-last-column)
+  fi
   "${CMD[@]}"
   exit 0
 fi
 
 if [[ "$PLOTS_ONLY" == true ]]; then
+  CMD=(python -m postprocess.plot_results "$CONFIG")
   if [[ -n "$OUT_OVERRIDE" ]]; then
-    python -m postprocess.plot_results "$CONFIG" --output_dir "$OUT_OVERRIDE"
-  else
-    python -m postprocess.plot_results "$CONFIG"
+    CMD+=(--output_dir "$OUT_OVERRIDE")
   fi
+  if [[ "$ONLY_PLOTS" != "all" ]]; then
+    CMD+=(--only "$ONLY_PLOTS")
+  fi
+  if [[ "$SENSOR_DROP_LAST_COLUMN" == true ]]; then
+    CMD+=(--sensor-drop-last-column)
+  fi
+  "${CMD[@]}"
   exit 0
 fi
 

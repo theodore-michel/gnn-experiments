@@ -54,6 +54,7 @@ results_smoke/
 **/errors/
 **/sensors/
 **/xdmf/
+configs/
 
 # --- Keep registry records versioned ---
 !registry/
