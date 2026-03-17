@@ -1,41 +1,65 @@
 {
-  "_description": "Example postprocess config for onecyl Re2. Use a string in model_parameters.name for single-model mode, or a list for compare mode.",
-  "dataset_parameters": {
-    "dt": 0.2,
-    "trajectory_length": 600,
-    "prediction_folder": "/scratch-big/tmichel/GNN/RUNS/NEWCYL/ONECYL_ARTICLE/onecyl-T-Re2-VPLN-lgud/predict",
-    "path_to_configs_pool": "/scratch-big/tmichel/GNN/DATASETS/dataset_onecyl_Re1e2_gmsh_mini/configs_pool_onecyl_Re2_selected_selected.pkl"
-  },
-  "model_parameters": {
-    "comparison_criterion": "Re2_loss",
-    "name": [
-      "Re2_VN_l",
-      "Re2_VN_lgud",
-      "Re2_VPLN_l",
-      "Re2_VPLN_lgud"
-    ],
-    "final_base_name": "pred_",
-    "prediction_start_index": 1
-  },
-  "plot_parameters": {
-    "truth_prediction_pairs": {
-      "y0": "x0",
-      "y1": "x1",
-      "y2": "x2"
-    },
-    "points_choice": "auto"
-  },
+  "_comment_pred_dir": "Folder containing raw prediction XDMF files for one model run.",
+  "pred_dir": "/path/to/prediction/cases/",
+
+  "_comment_dataset_dir": "Folder containing dataset truth XDMFs used to inject levelset when absent in predictions.",
+  "dataset_dir": "/path/to/onecyl/dataset/",
+
+  "_comment_configs_pool": "Pickle file with per-case metadata (case id, geometry, Reynolds).",
+  "configs_pool": "/path/to/configs_pool.pkl",
+
+  "_comment_model_name": "Model identifier used for output folder naming under output_dir/model_name.",
+  "model_name": "re100_full_run001",
+
+  "_comment_model_shortname": "Short name for legends in single-model and comparison plots. If not set, falls back to nickname or model_name.",
+  "model_shortname": "Model A",
+
+  "_comment_output_dir": "Root directory where postprocessing outputs are written.",
+  "output_dir": "./results/",
+
+  "_comment_prediction_base_name": "Filename prefix for prediction XDMF files (e.g. 'graph_' -> 'graph_10000.xdmf').",
+  "prediction_base_name": "graph_",
+
+  "_comment_feature_map": "Mapping from x* channels in prediction XDMF to semantic meaning. x0/x1/x2 are expected to be velocity_x/velocity_y/pressure.",
   "feature_map": {
-    "velocity_x": "x0",
-    "velocity_y": "x1",
-    "pressure": "x2",
-    "levelset": "x3",
-    "nodetype": "x6"
+    "x0": "velocity_x",
+    "x1": "velocity_y",
+    "x2": "pressure",
+    "x3": "levelset",
+    "x6": "nodetype"
   },
-  "physical_parameters": {
-    "mu": 0.01,
-    "rho": 1.0,
-    "U_inf": 1.0,
-    "D": 1.0
-  }
+
+  "_comment_target_map": "Mapping from y* channels to target semantics. Used for shifted target alignment.",
+  "target_map": {
+    "y0": "velocity_x",
+    "y1": "velocity_y",
+    "y2": "pressure"
+  },
+
+  "_comment_target_step_offset": "Number of steps by which targets lead predictions (usually 1).",
+  "target_step_offset": 1,
+
+  "_comment_rollout_steps": "Optional rollout cap (integer) or null for full rollout. Limits time-series extraction and all downstream computations.",
+  "rollout_steps": null,
+
+  "_comment_sensor_mode": "Sensor placement mode: 'auto' (from configs_pool geometry) or 'csv' (from sensor_csv file).",
+  "sensor_mode": "auto",
+
+  "_comment_sensor_csv": "CSV file with sensor_id, x, y columns. Used only when sensor_mode is 'csv'.",
+  "sensor_csv": "/path/to/cylinder_info.csv",
+
+  "_comment_sensor_drop_last_column": "If true, uses 3x2 sensor layout (6 panels total) instead of 3x3 (9 panels). Default false.",
+  "sensor_drop_last_column": false,
+
+  "_comment_levelset_source": "Source for levelset field: 'prediction' (if x* includes levelset) or 'dataset' (inject from dataset_dir truth files).",
+  "levelset_source": "dataset",
+
+  "_comment_force_mu": "Fluid viscosity for force integration. Default 1e-3 (Re ~ 1000 scale).",
+  "force_mu": 0.001,
+
+  "_comment_force_workers": "Number of parallel workers for force computation. Default 4.",
+  "force_workers": 4,
+
+  "_comment_force_sign_factor": "Sign multiplier applied to all force components (Fx, Fy). Default -1.0 to ensure Fx > 0 convention.",
+  "force_sign_factor": -1.0
 }

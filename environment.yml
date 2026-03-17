@@ -11,6 +11,9 @@ dependencies:
   - python=3.11
   - numpy=2.1.2
   - scipy
+  - pandas
+  - matplotlib
+  - tqdm
   - h5py=3.13.0
   - pyvista=0.44.2
   - pip

@@ -45,6 +45,15 @@ postprocess/**/results/
 postprocess/**/figures/
 postprocess/**/videos/
 postprocess/**/outputs/
+results/
+results_*/
+results_full/
+results_smoke/
+**/figures/
+**/forces/
+**/errors/
+**/sensors/
+**/xdmf/
 
 # --- Keep registry records versioned ---
 !registry/
