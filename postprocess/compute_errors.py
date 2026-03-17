@@ -27,6 +27,13 @@ def _cumulative_sum(values: np.ndarray) -> np.ndarray:
     return np.cumsum(values)
 
 
+def _cum_rmse_horizon(values: np.ndarray, horizon: int | None) -> float:
+    if len(values) == 0:
+        return 0.0
+    h = len(values) if horizon is None else max(1, min(int(horizon), len(values)))
+    return float(np.sum(values[:h]))
+
+
 def run(config_path: str) -> None:
     cfg = load_json(config_path)
     model_name = cfg["model_name"]
@@ -88,12 +95,14 @@ def run(config_path: str) -> None:
             {
                 "model_name": model_name,
                 "case_id": case_id,
-                "rmse_total_mean": float(np.mean(rmse_total)),
-                "rmse_vel_mean": float(np.mean(rmse_vel)),
-                "rmse_pres_mean": float(np.mean(rmse_pres)),
+                # Backward-compatible column used by existing bar plots.
+                "rmse_total_mean": _cum_rmse_horizon(rmse_total, None),
+                "rmse_vel_mean": _cum_rmse_horizon(rmse_vel, None),
+                "rmse_pres_mean": _cum_rmse_horizon(rmse_pres, None),
                 "rmse_total_std": float(np.std(rmse_total)),
-                "rmse_step1": float(rmse_total[0]),
-                "rmse_50step": float(np.mean(rmse_total[: min(50, len(rmse_total))])),
+                "rmse_step1": _cum_rmse_horizon(rmse_total, 1),
+                "rmse_50step": _cum_rmse_horizon(rmse_total, 50),
+                "rmse_all": _cum_rmse_horizon(rmse_total, None),
             }
         )
 
@@ -120,28 +129,44 @@ def run(config_path: str) -> None:
         [
             {"Statistic": "Number of Cases", "Value": len(per_case_df)},
             {
-                "Statistic": "RMSE Total Mean",
-                "Value": per_case_df["rmse_total_mean"].mean(),
-            },
-            {
-                "Statistic": "RMSE Total Std",
-                "Value": per_case_df["rmse_total_mean"].std(),
-            },
-            {
-                "Statistic": "RMSE Velocity Mean",
-                "Value": per_case_df["rmse_vel_mean"].mean(),
-            },
-            {
-                "Statistic": "RMSE Pressure Mean",
-                "Value": per_case_df["rmse_pres_mean"].mean(),
-            },
-            {
-                "Statistic": "RMSE Step-1 Mean",
+                "Statistic": "RMSE 1step Mean Across Cases",
                 "Value": per_case_df["rmse_step1"].mean(),
             },
             {
-                "Statistic": "RMSE First-50 Mean",
+                "Statistic": "RMSE 1step Std Across Cases",
+                "Value": per_case_df["rmse_step1"].std(),
+            },
+            {
+                "Statistic": "RMSE 50step Mean Across Cases",
                 "Value": per_case_df["rmse_50step"].mean(),
+            },
+            {
+                "Statistic": "RMSE 50step Std Across Cases",
+                "Value": per_case_df["rmse_50step"].std(),
+            },
+            {
+                "Statistic": "RMSE all Mean Across Cases",
+                "Value": per_case_df["rmse_total_mean"].mean(),
+            },
+            {
+                "Statistic": "RMSE all Std Across Cases",
+                "Value": per_case_df["rmse_total_mean"].std(),
+            },
+            {
+                "Statistic": "RMSE all Velocity Mean Across Cases",
+                "Value": per_case_df["rmse_vel_mean"].mean(),
+            },
+            {
+                "Statistic": "RMSE all Velocity Std Across Cases",
+                "Value": per_case_df["rmse_vel_mean"].std(),
+            },
+            {
+                "Statistic": "RMSE all Pressure Mean Across Cases",
+                "Value": per_case_df["rmse_pres_mean"].mean(),
+            },
+            {
+                "Statistic": "RMSE all Pressure Std Across Cases",
+                "Value": per_case_df["rmse_pres_mean"].std(),
             },
         ]
     )

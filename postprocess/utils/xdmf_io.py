@@ -174,6 +174,13 @@ def case_diameter_proxy(row: pd.Series) -> float:
     if row is None:
         return float("nan")
 
+    # Prefer explicit object radius from configs_pool when available.
+    for key in ["radius_objects", "object_radius", "obj_radius"]:
+        if key in row and pd.notna(row[key]):
+            val = _scalar_from_row_value(row[key])
+            if val is not None:
+                return float(2.0 * val)
+
     for key in ["diameter", "Diameter", "D", "d", "obj_diameter"]:
         if key in row and pd.notna(row[key]):
             val = _scalar_from_row_value(row[key])
@@ -194,6 +201,8 @@ def case_sort_key_from_configs(
 ) -> Tuple[float, str]:
     row = case_row_from_configs_pool(configs_df, case_id)
     d_proxy = case_diameter_proxy(row)
+    if pd.isna(d_proxy):
+        d_proxy = float("inf")
     cid = normalize_case_id(case_id)
     return d_proxy, cid
 
@@ -201,7 +210,15 @@ def case_sort_key_from_configs(
 def case_cylinder_geometry(row: pd.Series) -> Tuple[float, float, float]:
     cx_candidates = ["x_objects", "cx", "center_x", "x_center"]
     cy_candidates = ["y_objects", "cy", "center_y", "y_center"]
-    d_candidates = ["diameter", "D", "d", "obj_diameter"]
+    d_candidates = ["diameter", "Diameter", "D", "d", "obj_diameter"]
+    r_candidates = [
+        "radius_objects",
+        "object_radius",
+        "obj_radius",
+        "radius",
+        "Radius",
+        "r",
+    ]
 
     def _pick(cands: List[str], default: float) -> float:
         for key in cands:
@@ -215,7 +232,19 @@ def case_cylinder_geometry(row: pd.Series) -> Tuple[float, float, float]:
 
     cx = _pick(cx_candidates, 0.0)
     cy = _pick(cy_candidates, 0.0)
-    diam = _pick(d_candidates, 1.0)
+    diam = float("nan")
+    for key in r_candidates:
+        if key in row and pd.notna(row[key]):
+            val = row[key]
+            if isinstance(val, (list, tuple, np.ndarray)):
+                if len(val) > 0:
+                    diam = float(2.0 * val[0])
+                    break
+            else:
+                diam = float(2.0 * val)
+                break
+    if pd.isna(diam):
+        diam = _pick(d_candidates, 1.0)
     return cx, cy, diam
 
 

@@ -8,6 +8,7 @@ import matplotlib
 
 
 import matplotlib.pyplot as plt
+from matplotlib import colors as mcolors
 import numpy as np
 import pandas as pd
 
@@ -50,6 +51,27 @@ def _box_spines(ax: plt.Axes) -> None:
         ax.spines[side].set_visible(True)
 
 
+def _rollout_xticks() -> List[int]:
+    ticks = list(
+        range(
+            int(PLOT_CONFIG["rollout_tick_step"]),
+            int(PLOT_CONFIG["rollout_end"]),
+            int(PLOT_CONFIG["rollout_tick_step"]),
+        )
+    )
+    return [int(PLOT_CONFIG["rollout_start"]), *ticks, int(PLOT_CONFIG["rollout_end"])]
+
+
+def _apply_rollout_axis(ax: plt.Axes) -> None:
+    ax.set_xlim(int(PLOT_CONFIG["rollout_start"]), int(PLOT_CONFIG["rollout_end"]))
+    ax.set_xticks(_rollout_xticks())
+
+
+def _lighten_color(color: str, blend: float = 0.75) -> tuple:
+    rgb = np.array(mcolors.to_rgb(color))
+    return tuple((1.0 - blend) * rgb + blend * np.ones(3))
+
+
 def _assert_same_cases(models_data: List[dict], labels: List[str]) -> List[str]:
     case_sets = [set(d["rmse"]["case_id"].astype(str).tolist()) for d in models_data]
     ref = case_sets[0]
@@ -68,7 +90,19 @@ def run(
     output_dir: str,
 ) -> None:
     cfg = load_json(config_path)
-    plt.rcParams.update({"font.family": PLOT_CONFIG["font_family"]})
+    PLOT_CONFIG["sensor_drop_last_column"] = bool(
+        cfg.get("sensor_drop_last_column", PLOT_CONFIG["sensor_drop_last_column"])
+    )
+    plt.rcParams.update(
+        {
+            "font.family": PLOT_CONFIG["font_family"],
+            "axes.titlesize": PLOT_CONFIG["fontsize_title"],
+            "axes.labelsize": PLOT_CONFIG["fontsize_axis"],
+            "xtick.labelsize": PLOT_CONFIG["fontsize_ticks"],
+            "ytick.labelsize": PLOT_CONFIG["fontsize_ticks"],
+            "legend.fontsize": PLOT_CONFIG["fontsize_legend"],
+        }
+    )
 
     model_paths = [Path(p) for p in model_dirs]
     labels = [
@@ -91,58 +125,95 @@ def run(
     )
 
     for case_id in common_cases:
-        fig, axs = plt.subplots(3, 3, figsize=(20, 10), squeeze=False)
-        base = models_data[0]["sensor"]
-        dcase_base = base[base["case_id"].astype(str) == case_id]
-        sensors = sorted(dcase_base["sensor_id"].astype(str).unique())[:9]
-        for i, sid in enumerate(sensors):
-            ax = axs.flatten()[i]
-            gt = dcase_base[dcase_base["sensor_id"].astype(str) == sid].sort_values(
-                "timestep"
+        for truth_col, pred_col, field_label in [
+            ("v_targ", "v_pred", "velocity"),
+            ("p_targ", "p_pred", "pressure"),
+        ]:
+            max_panels = 6 if PLOT_CONFIG["sensor_drop_last_column"] else 9
+            ncols = 2 if max_panels == 6 else 3
+            fig, axs = plt.subplots(
+                3, ncols, figsize=PLOT_CONFIG["fig_sensor"], squeeze=False
             )
-            ax.plot(
-                gt["timestep"],
-                gt["v_targ"],
-                color="black",
-                linestyle=(0, (4, 1)),
-                linewidth=1.75,
-                label="Ground Truth",
-            )
-            for midx, mdata in enumerate(models_data):
-                ds = mdata["sensor"]
-                s = ds[
-                    (ds["case_id"].astype(str) == case_id)
-                    & (ds["sensor_id"].astype(str) == sid)
-                ].sort_values("timestep")
-                ax.plot(
-                    s["timestep"],
-                    s["v_pred"],
-                    color=colors[midx % len(colors)],
-                    linewidth=2.0,
-                    alpha=0.8,
-                    label=labels[midx],
+            base = models_data[0]["sensor"]
+            dcase_base = base[base["case_id"].astype(str) == case_id]
+            sensors = sorted(dcase_base["sensor_id"].astype(str).unique())[:max_panels]
+            for i, sid in enumerate(sensors):
+                ax = axs.flatten()[i]
+                gt = dcase_base[dcase_base["sensor_id"].astype(str) == sid].sort_values(
+                    "timestep"
                 )
-            ax.set_title(sid)
-            ax.set_ylim(*PLOT_CONFIG["sensor_ylim_velocity"])
-            row_i = i // 3
-            col_i = i % 3
-            if row_i == 1 and col_i == 0:
-                ax.set_ylabel("velocity")
-            else:
-                ax.set_ylabel("")
-            if row_i == 2 and col_i == 1:
-                ax.set_xlabel("Rollout step")
-            else:
-                ax.set_xlabel("")
-            if col_i > 0:
-                ax.tick_params(axis="y", labelleft=False)
-            if row_i < 2:
-                ax.tick_params(axis="x", labelbottom=False)
-            _box_spines(ax)
-            if i == 0:
-                ax.legend(loc="upper right", fontsize=9)
-        fig.tight_layout()
-        _save(fig, out, f"compare_sensor_velocity_{case_id}")
+                x_gt = gt["timestep"].to_numpy()
+                ax.plot(
+                    x_gt,
+                    gt[truth_col],
+                    color="black",
+                    linestyle=(0, (4, 1)),
+                    linewidth=1.75,
+                    label="Ground Truth",
+                )
+                for midx, mdata in enumerate(models_data):
+                    ds = mdata["sensor"]
+                    s = ds[
+                        (ds["case_id"].astype(str) == case_id)
+                        & (ds["sensor_id"].astype(str) == sid)
+                    ].sort_values("timestep")
+                    x = s["timestep"].to_numpy()
+                    ax.plot(
+                        x,
+                        s[pred_col],
+                        color=colors[midx % len(colors)],
+                        linewidth=2.0,
+                        alpha=0.8,
+                        label=labels[midx],
+                    )
+                ax.text(
+                    0.5,
+                    0.96,
+                    f"${sid[0]}_{{{sid[1:]}}}$",
+                    transform=ax.transAxes,
+                    ha="center",
+                    va="top",
+                    fontsize=PLOT_CONFIG["fontsize_title"],
+                    bbox={
+                        "boxstyle": "round,pad=0.2",
+                        "facecolor": "white",
+                        "edgecolor": "black",
+                        "alpha": 0.85,
+                    },
+                )
+                if field_label == "velocity":
+                    ax.set_ylim(*PLOT_CONFIG["sensor_ylim_velocity"])
+                    ax.set_yticks(PLOT_CONFIG["sensor_yticks_velocity"])
+                else:
+                    ax.set_ylim(*PLOT_CONFIG["sensor_ylim_pressure"])
+                    ax.set_yticks(PLOT_CONFIG["sensor_yticks_pressure"])
+                _apply_rollout_axis(ax)
+
+                row_i = i // ncols
+                col_i = i % ncols
+                if row_i == 1 and col_i == 0:
+                    if field_label == "velocity":
+                        ax.set_ylabel(r"Velocity [$m.s^{-1}$]")
+                    else:
+                        ax.set_ylabel(r"Pressure [$Pa$]")
+                else:
+                    ax.set_ylabel("")
+                if row_i == 2 and col_i == ncols // 2:
+                    ax.set_xlabel("Rollout step")
+                else:
+                    ax.set_xlabel("")
+                if col_i > 0:
+                    ax.tick_params(axis="y", labelleft=False)
+                if row_i < 2:
+                    ax.tick_params(axis="x", labelbottom=False)
+                _box_spines(ax)
+                if i == 0:
+                    ax.legend(loc="lower center", ncol=1)
+
+            for j in range(len(sensors), 3 * ncols):
+                axs.flatten()[j].set_visible(False)
+            fig.tight_layout(pad=0.6)
+            _save(fig, out, f"compare_sensor_{field_label}_{case_id}")
 
     fig, ax = plt.subplots(figsize=(13, 7))
     for midx, mdata in enumerate(models_data):
@@ -156,7 +227,9 @@ def run(
         ax.fill_between(x, m - s, m + s, color=colors[midx % len(colors)], alpha=0.25)
     ax.set_xlabel("Rollout step")
     ax.set_ylabel("Cumulative RMSE total")
-    ax.legend(loc="upper left")
+    _apply_rollout_axis(ax)
+    ax.set_ylim(bottom=0.0)
+    ax.legend(loc="upper left", ncol=2)
     _box_spines(ax)
     fig.tight_layout()
     _save(fig, out, "compare_cumulative_rmse_total")
@@ -175,33 +248,55 @@ def run(
             )
         ax.set_xlabel("Rollout step")
         ax.set_ylabel("Cumulative RMSE total")
-        ax.legend(loc="upper left")
+        _apply_rollout_axis(ax)
+        ax.set_ylim(bottom=0.0)
+        ax.legend(loc="upper left", ncol=2)
         _box_spines(ax)
         fig.tight_layout()
         _save(fig, out, f"compare_cumulative_rmse_case_{case_id}")
 
-    x = np.arange(len(common_cases), dtype=float)
-    width = 0.8 / max(1, len(models_data))
     fig, ax = plt.subplots(figsize=(14, 7))
+    num_cases = len(common_cases)
+    block_gap = 1.0
+    xticks = []
+    xticklabels = []
     for midx, mdata in enumerate(models_data):
         rmse = mdata["rmse"].copy()
         rmse["case_id"] = rmse["case_id"].astype(str)
         rmse = rmse.set_index("case_id").loc[common_cases].reset_index()
+        start = midx * (num_cases + block_gap)
+        x = start + np.arange(num_cases, dtype=float)
+        y = rmse["rmse_total_mean"].to_numpy()
         ax.bar(
-            x - 0.4 + (midx + 0.5) * width,
-            rmse["rmse_total_mean"],
-            width=width,
+            x,
+            y,
+            width=1.0,
+            align="edge",
             color=colors[midx % len(colors)],
+            edgecolor="black",
+            linewidth=0.8,
             label=labels[midx],
+            zorder=2,
         )
-    ax.set_xticks(x)
-    ax.set_xticklabels(common_cases)
-    ax.set_xlabel("Case ID")
+        mean_y = float(np.mean(y)) if len(y) else 0.0
+        ax.hlines(
+            y=mean_y,
+            xmin=start,
+            xmax=start + num_cases,
+            colors=colors[midx % len(colors)],
+            linestyles="--",
+            linewidth=3.0,
+            zorder=3,
+        )
+        xticks.append(start + num_cases / 2.0)
+        xticklabels.append(labels[midx])
+    if len(models_data) > 0:
+        ax.set_xlim(0.0, len(models_data) * (num_cases + block_gap) - block_gap)
+    ax.set_xticks(xticks)
+    ax.set_xticklabels(xticklabels)
+    ax.set_xlabel("Model")
     ax.set_ylabel("RMSE total mean")
-    ax.legend(loc="upper right")
-    ax.tick_params(axis="x", rotation=45)
-    for lbl in ax.get_xticklabels():
-        lbl.set_ha("right")
+    ax.legend(loc="upper right", ncol=2)
     _box_spines(ax)
     fig.tight_layout()
     _save(fig, out, "compare_rmse_bars")
@@ -215,40 +310,53 @@ def run(
         group_width = 0.9
         barw = group_width / (len(models_data) + 1)
         for i, case_id in enumerate(common_cases):
-            truth_mean = base_summary.loc[
-                base_summary["case_id"] == case_id, f"{comp}_targ_mean"
-            ].iloc[0]
-            truth_std = base_summary.loc[
-                base_summary["case_id"] == case_id, f"{comp}_targ_std"
-            ].iloc[0]
+            if comp == "fy":
+                truth_val = base_summary.loc[
+                    base_summary["case_id"] == case_id, "fy_targ_std"
+                ].iloc[0]
+            else:
+                truth_val = base_summary.loc[
+                    base_summary["case_id"] == case_id, "fx_targ_mean"
+                ].iloc[0]
             ax.bar(
                 i - group_width / 2 + barw * 0.5,
-                truth_mean,
-                yerr=truth_std,
+                truth_val,
                 width=barw,
                 color="#7f7f7f",
+                edgecolor="black",
+                linewidth=0.8,
                 label="Ground Truth" if i == 0 else None,
             )
             for midx, mdata in enumerate(models_data):
                 summ = mdata["forces_summary"].copy()
                 summ["case_id"] = summ["case_id"].astype(str)
                 summ = summ.set_index("case_id").loc[common_cases].reset_index()
-                pm = summ.loc[summ["case_id"] == case_id, f"{comp}_pred_mean"].iloc[0]
-                ps = summ.loc[summ["case_id"] == case_id, f"{comp}_pred_std"].iloc[0]
+                if comp == "fy":
+                    pred_val = summ.loc[summ["case_id"] == case_id, "fy_pred_std"].iloc[
+                        0
+                    ]
+                else:
+                    pred_val = summ.loc[
+                        summ["case_id"] == case_id, "fx_pred_mean"
+                    ].iloc[0]
                 xpos = i - group_width / 2 + barw * (midx + 1 + 0.5)
                 ax.bar(
                     xpos,
-                    pm,
-                    yerr=ps,
+                    pred_val,
                     width=barw,
                     color=colors[midx % len(colors)],
+                    edgecolor="black",
+                    linewidth=0.8,
                     label=labels[midx] if i == 0 else None,
                 )
         ax.set_xticks(np.arange(len(common_cases)))
         ax.set_xticklabels(common_cases)
-        ax.set_xlabel("Case ID")
-        ax.set_ylabel(comp)
-        ax.legend(loc="upper right")
+        ax.set_xlabel(r"Case ID (ascending $Re$)")
+        if comp == "fx":
+            ax.set_ylabel(r"$F_x$ [$N$]")
+        else:
+            ax.set_ylabel(r"$F_y$ fluctuation [$N$]")
+        ax.legend(loc="upper right", ncol=2)
         ax.tick_params(axis="x", rotation=45)
         for lbl in ax.get_xticklabels():
             lbl.set_ha("right")

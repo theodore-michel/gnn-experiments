@@ -124,6 +124,7 @@ def run(config_path: str) -> None:
 
     mu = float(cfg.get("force_mu", 1e-3))
     workers = int(cfg.get("force_workers", 4))
+    sign_factor = float(cfg.get("force_sign_factor", -1.0))
 
     sorted_case_ids = sorted(cases.keys(), key=lambda x: int(x) if x.isdigit() else x)
     for case_id in tqdm(sorted_case_ids, desc="Force cases"):
@@ -148,7 +149,14 @@ def run(config_path: str) -> None:
             ls = np.asarray(mesh.point_data["levelset"]).reshape(-1)
             fx_p, fy_p = _drag_lift(pts, tri, edges, vx, vy, p, ls, mu=mu)
             fx_t, fy_t = _drag_lift(pts, tri, edges, vx_t, vy_t, p_t, ls, mu=mu)
-            return k, -fx_p, -fy_p, -fx_t, -fy_t
+            # Convert to body-force convention (default multiplies by -1).
+            return (
+                k,
+                sign_factor * fx_p,
+                sign_factor * fy_p,
+                sign_factor * fx_t,
+                sign_factor * fy_t,
+            )
 
         rows = []
         with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -171,6 +179,8 @@ def run(config_path: str) -> None:
 
     summary_rows = []
     for csv_path in sorted(forces_dir.glob("forces_*.csv")):
+        if csv_path.name == "forces_summary.csv":
+            continue
         df = pd.read_csv(csv_path)
         case_id = str(df["case_id"].iloc[0])
         summary_rows.append(
