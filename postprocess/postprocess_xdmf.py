@@ -113,6 +113,8 @@ def run(config_path: str) -> None:
     if not cases:
         raise FileNotFoundError(f"No prediction XDMFs found in {pred_dir}")
 
+    written_count = 0
+    skipped_count = 0
     for case_id, xdmf_path in tqdm(cases.items(), total=len(cases), desc="Cases"):
         meshes, timesteps = read_xdmf_series(xdmf_path)
         proc_meshes, proc_times = _build_processed_meshes(
@@ -126,12 +128,24 @@ def run(config_path: str) -> None:
             rollout_steps=rollout_steps,
         )
         if not proc_meshes:
+            skipped_count += 1
             continue
         write_xdmf_series(
             out_xdmf_dir / f"{normalize_case_id(case_id)}.xdmf", proc_meshes, proc_times
         )
+        written_count += 1
 
-    print(f"[postprocess_xdmf] Wrote processed XDMFs to {out_xdmf_dir}")
+    if written_count == 0:
+        raise RuntimeError(
+            "postprocess_xdmf generated 0 processed cases. "
+            "This often means target_step_offset is too large for the available "
+            "prediction timesteps (e.g. 1-step predictions with target_step_offset=1)."
+        )
+
+    print(
+        f"[postprocess_xdmf] Wrote {written_count} processed XDMFs to {out_xdmf_dir} "
+        f"(skipped {skipped_count} cases with empty aligned rollout)"
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
