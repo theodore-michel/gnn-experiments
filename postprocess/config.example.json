@@ -11,8 +11,14 @@
   "_comment_model_name": "Model identifier used for output folder naming under output_dir/model_name.",
   "model_name": "re100_full_run001",
 
+  "_comment_model_shortname": "Short name for legends in single-model and comparison plots. If not set, falls back to nickname or model_name.",
+  "model_shortname": "Model A",
+
   "_comment_output_dir": "Root directory where postprocessing outputs are written.",
   "output_dir": "./results/",
+
+  "_comment_prediction_base_name": "Filename prefix for prediction XDMF files (e.g. 'graph_' -> 'graph_10000.xdmf').",
+  "prediction_base_name": "graph_",
 
   "_comment_feature_map": "Mapping from x* channels in prediction XDMF to semantic meaning. x0/x1/x2 are expected to be velocity_x/velocity_y/pressure.",
   "feature_map": {
@@ -33,15 +39,27 @@
   "_comment_target_step_offset": "Number of steps by which targets lead predictions (usually 1).",
   "target_step_offset": 1,
 
-  "_comment_rollout_steps": "Optional rollout cap. null means full rollout.",
+  "_comment_rollout_steps": "Optional rollout cap (integer) or null for full rollout. Limits time-series extraction and all downstream computations.",
   "rollout_steps": null,
 
-  "_comment_sensor_mode": "Sensor placement mode: auto (from configs_pool geometry) or csv (from sensor_csv file).",
+  "_comment_sensor_mode": "Sensor placement mode: 'auto' (from configs_pool geometry) or 'csv' (from sensor_csv file).",
   "sensor_mode": "auto",
 
-  "_comment_sensor_csv": "CSV with sensor_id,x,y columns, used only when sensor_mode is csv.",
+  "_comment_sensor_csv": "CSV file with sensor_id, x, y columns. Used only when sensor_mode is 'csv'.",
   "sensor_csv": "/path/to/cylinder_info.csv",
 
-  "_comment_levelset_source": "prediction if levelset exists in prediction feature_map; dataset to inject from dataset_dir.",
-  "levelset_source": "dataset"
+  "_comment_sensor_drop_last_column": "If true, uses 3x2 sensor layout (6 panels total) instead of 3x3 (9 panels). Default false.",
+  "sensor_drop_last_column": false,
+
+  "_comment_levelset_source": "Source for levelset field: 'prediction' (if x* includes levelset) or 'dataset' (inject from dataset_dir truth files).",
+  "levelset_source": "dataset",
+
+  "_comment_force_mu": "Fluid viscosity for force integration. Default 1e-3 (Re ~ 1000 scale).",
+  "force_mu": 0.001,
+
+  "_comment_force_workers": "Number of parallel workers for force computation. Default 4.",
+  "force_workers": 4,
+
+  "_comment_force_sign_factor": "Sign multiplier applied to all force components (Fx, Fy). Default -1.0 to ensure Fx > 0 convention.",
+  "force_sign_factor": -1.0
 }

@@ -3,7 +3,8 @@
   "dataset_dir": "/scratch-big/tmichel/GNN/DATASETS/dataset_onecyl_Re1e4_gmsh_trunc/predict",
   "configs_pool": "/scratch-big/tmichel/GNN/DATASETS/dataset_onecyl_Re1e4_gmsh_trunc/configs_pool_onecyl.pkl",
   "model_name": "onecyl_Re2trunc_allnoise_VPLN_l",
-  "output_dir": "./results_full",
+  "model_shortname": "Re2 VPLN-l",
+  "output_dir": "./results_smoke",
   "prediction_base_name": "graph_",
   "feature_map": {
     "x0": "velocity_x",
@@ -18,7 +19,7 @@
     "y2": "pressure"
   },
   "target_step_offset": 1,
-  "rollout_steps": null,
+  "rollout_steps": 600,
   "sensor_mode": "auto",
   "sensor_csv": "",
   "levelset_source": "prediction",
