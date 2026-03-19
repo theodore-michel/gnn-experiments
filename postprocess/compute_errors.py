@@ -31,7 +31,7 @@ def _cum_rmse_horizon(values: np.ndarray, horizon: int | None) -> float:
     if len(values) == 0:
         return 0.0
     h = len(values) if horizon is None else max(1, min(int(horizon), len(values)))
-    return float(np.sum(values[:h]))
+    return float(np.sum(values[:h]) / h)
 
 
 def run(config_path: str) -> None:
@@ -87,6 +87,10 @@ def run(config_path: str) -> None:
                 "cum_rmse_pres": cum_pres,
             }
         )
+        denom = np.maximum(case_curve["timestep"].to_numpy(dtype=float), 1.0)
+        case_curve["rollout_rmse_total"] = case_curve["cum_rmse_total"] / denom
+        case_curve["rollout_rmse_vel"] = case_curve["cum_rmse_vel"] / denom
+        case_curve["rollout_rmse_pres"] = case_curve["cum_rmse_pres"] / denom
         case_curve.to_csv(errors_dir / f"cumulative_rmse_{case_id}.csv", index=False)
         case_curve.insert(0, "case_id", case_id)
         all_cumulative_rows.append(case_curve)
@@ -119,6 +123,12 @@ def run(config_path: str) -> None:
             cum_rmse_vel_std=("cum_rmse_vel", "std"),
             cum_rmse_pres_mean=("cum_rmse_pres", "mean"),
             cum_rmse_pres_std=("cum_rmse_pres", "std"),
+            rollout_rmse_total_mean=("rollout_rmse_total", "mean"),
+            rollout_rmse_total_std=("rollout_rmse_total", "std"),
+            rollout_rmse_vel_mean=("rollout_rmse_vel", "mean"),
+            rollout_rmse_vel_std=("rollout_rmse_vel", "std"),
+            rollout_rmse_pres_mean=("rollout_rmse_pres", "mean"),
+            rollout_rmse_pres_std=("rollout_rmse_pres", "std"),
         )
         .reset_index()
     )

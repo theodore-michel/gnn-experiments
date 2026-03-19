@@ -125,6 +125,7 @@ def run(config_path: str) -> None:
     mu = float(cfg.get("force_mu", 1e-3))
     workers = int(cfg.get("force_workers", 4))
     sign_factor = float(cfg.get("force_sign_factor", -1.0))
+    force_summary_start = int(cfg.get("force_summary_start", 100))
 
     sorted_case_ids = sorted(cases.keys(), key=lambda x: int(x) if x.isdigit() else x)
     for case_id in tqdm(sorted_case_ids, desc="Force cases"):
@@ -183,18 +184,21 @@ def run(config_path: str) -> None:
             continue
         df = pd.read_csv(csv_path)
         case_id = str(df["case_id"].iloc[0])
+        df_stats = df[df["timestep"] >= force_summary_start]
+        if df_stats.empty:
+            df_stats = df
         summary_rows.append(
             {
                 "model_name": model_name,
                 "case_id": case_id,
-                "fx_pred_mean": df["fx_pred"].mean(),
-                "fy_pred_mean": df["fy_pred"].mean(),
-                "fx_targ_mean": df["fx_targ"].mean(),
-                "fy_targ_mean": df["fy_targ"].mean(),
-                "fx_pred_std": df["fx_pred"].std(),
-                "fy_pred_std": df["fy_pred"].std(),
-                "fx_targ_std": df["fx_targ"].std(),
-                "fy_targ_std": df["fy_targ"].std(),
+                "fx_pred_mean": df_stats["fx_pred"].mean(),
+                "fy_pred_mean": df_stats["fy_pred"].mean(),
+                "fx_targ_mean": df_stats["fx_targ"].mean(),
+                "fy_targ_mean": df_stats["fy_targ"].mean(),
+                "fx_pred_std": df_stats["fx_pred"].std(),
+                "fy_pred_std": df_stats["fy_pred"].std(),
+                "fx_targ_std": df_stats["fx_targ"].std(),
+                "fy_targ_std": df_stats["fy_targ"].std(),
             }
         )
     pd.DataFrame(summary_rows).to_csv(forces_dir / "forces_summary.csv", index=False)
