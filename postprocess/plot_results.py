@@ -8,6 +8,8 @@ import matplotlib
 
 import matplotlib.pyplot as plt
 from matplotlib import colors as mcolors
+from matplotlib.patches import Patch
+from matplotlib.ticker import FuncFormatter
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -23,9 +25,9 @@ matplotlib.use("Agg")
 
 PLOT_CONFIG = {
     "font_family": "serif",
-    "fig_sensor": (20, 10),
-    "fig_forces": (14, 8),
-    "fig_rmse": (13, 7),
+    "fig_sensor": (15, 7.5),
+    "fig_forces": (10.5, 6),
+    "fig_rmse": (9.75, 5.25),
     "dpi": 300,
     "gt_color": "black",
     "gt_linestyle": (0, (4, 1)),
@@ -106,14 +108,14 @@ def _lighten_color(color: str, blend: float = 0.75) -> tuple:
 
 
 def _ordered_sensor_ids(sensor_ids: List[str], cropped: bool) -> List[str]:
-    # Physical layout:
-    # top row    -> p3 p6 p9
-    # middle row -> p2 p5 p8
-    # bottom row -> p1 p4 p7
+    # Reading order layout:
+    # top row    -> p1 p2 p3
+    # middle row -> p4 p5 p6
+    # bottom row -> p7 p8 p9
     layout = [
-        ["p3", "p6", "p9"],
-        ["p2", "p5", "p8"],
-        ["p1", "p4", "p7"],
+        ["p1", "p2", "p3"],
+        ["p4", "p5", "p6"],
+        ["p7", "p8", "p9"],
     ]
     if cropped:
         layout = [row[:2] for row in layout]
@@ -136,6 +138,57 @@ def _style_legend(legend: Optional[matplotlib.legend.Legend]) -> None:
     frame.set_facecolor((1.0, 1.0, 1.0, PLOT_CONFIG["legend_face_alpha"]))
     frame.set_edgecolor(mcolors.to_rgba(PLOT_CONFIG["legend_edge_color"], alpha=1.0))
     frame.set_linewidth(1.0)
+
+
+def _hide_top_right_spines(ax: plt.Axes) -> None:
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+
+def _apply_rollout_rmse_style(ax: plt.Axes) -> None:
+    ax.set_ylabel("RMSE rollout")
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda v, pos: f"{v * 1e3:g}"))
+    ax.text(
+        0.0,
+        1.01,
+        "1e-3",
+        transform=ax.transAxes,
+        ha="left",
+        va="bottom",
+        fontsize=PLOT_CONFIG["fontsize_ticks"],
+    )
+    _hide_top_right_spines(ax)
+
+
+def _style_rollout_legend(legend: Optional[matplotlib.legend.Legend]) -> None:
+    if legend is None:
+        return
+    legend.set_frame_on(False)
+    for handle in legend.legend_handles:
+        if hasattr(handle, "set_linewidth"):
+            handle.set_linewidth(max(3.0, PLOT_CONFIG["rmse_linewidth"] * 1.8))
+
+
+def _force_compact_legend(ax: plt.Axes, labels: List[str], colors: List[str]) -> None:
+    handles: List[object] = [
+        *[Patch(facecolor=c, edgecolor="black", linewidth=0.8) for c in colors],
+        Patch(facecolor="white", edgecolor="black", linewidth=0.8, label="mean"),
+        Patch(
+            facecolor="white",
+            edgecolor="black",
+            linewidth=0.8,
+            hatch="//",
+            label="std",
+        ),
+    ]
+    legend_labels: List[str] = [*labels, "mean", "std"]
+    legend = ax.legend(handles, legend_labels, loc="upper left", ncol=2)
+    _style_legend(legend)
+
+
+def _rollout_from_cumulative(cum_vals: np.ndarray, timesteps: np.ndarray) -> np.ndarray:
+    denom = np.maximum(timesteps.astype(float), 1.0)
+    return cum_vals / denom
 
 
 def _save(fig: plt.Figure, out_dir: Path, stem: str) -> None:
@@ -250,13 +303,22 @@ def _plot_sensors(
                     ax.tick_params(axis="x", labelbottom=False)
 
                 _box_spines(ax)
-                if i == 0:
-                    legend = ax.legend(loc="lower center", ncol=1)
-                    _style_legend(legend)
 
             for j in range(len(sensor_ids[:max_panels]), 3 * ncols):
                 axs.flatten()[j].set_visible(False)
-            fig.tight_layout(pad=0.6)
+
+            # Place one global legend as a single centered line above subplots.
+            handles, labels = axs.flatten()[0].get_legend_handles_labels()
+            legend = fig.legend(
+                handles,
+                labels,
+                loc="upper center",
+                bbox_to_anchor=(0.5, 1.02),
+                frameon=True,
+                ncol=len(labels),
+            )
+            _style_legend(legend)
+            fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.93), pad=0.6)
             _save(fig, figures_dir, f"sensor_{field_label}_{case_id}{sensor_suffix}")
 
 
@@ -289,6 +351,9 @@ def _plot_forces(model_root: Path, figures_dir: Path, model_label: str) -> None:
         axs[0].set_ylabel(r"$F_x$ [$N$]")
         legend = axs[0].legend(loc="upper left")
         _style_legend(legend)
+        axs[0].axhline(
+            0.0, color="#505050", linewidth=0.8, linestyle="--", alpha=0.35, zorder=1
+        )
         _apply_rollout_axis(axs[0])
         _box_spines(axs[0])
 
@@ -308,6 +373,9 @@ def _plot_forces(model_root: Path, figures_dir: Path, model_label: str) -> None:
         )
         axs[1].set_ylabel(r"$F_y$ [$N$]")
         axs[1].set_xlabel("Rollout step")
+        axs[1].axhline(
+            0.0, color="#505050", linewidth=0.8, linestyle="--", alpha=0.35, zorder=1
+        )
         _apply_rollout_axis(axs[1])
         _box_spines(axs[1])
         fig.tight_layout()
@@ -323,43 +391,47 @@ def _plot_rmse(
     configs_df = load_configs_pool(cfg["configs_pool"])
 
     rmse_curves = sorted(err_dir.glob("cumulative_rmse_*.csv"))
-    for case_csv in tqdm(rmse_curves, desc="Plot cumulative RMSE cases"):
+    for case_csv in tqdm(rmse_curves, desc="Plot rollout error cases"):
         if case_csv.name == "cumulative_rmse_mean.csv":
             continue
         d = pd.read_csv(case_csv)
         cid = case_csv.stem.replace("cumulative_rmse_", "")
         fig, ax = plt.subplots(figsize=PLOT_CONFIG["fig_rmse"])
+        x = d["timestep"].to_numpy()
+        rollout_total = _rollout_from_cumulative(d["cum_rmse_total"].to_numpy(), x)
         ax.plot(
-            d["timestep"],
-            d["cum_rmse_total"],
+            x,
+            rollout_total,
             label="total",
             linewidth=PLOT_CONFIG["rmse_linewidth"],
         )
         ax.set_xlabel("Rollout step")
-        ax.set_ylabel("Cumulative RMSE")
         _apply_rollout_axis(ax)
+        _apply_rollout_rmse_style(ax)
         ax.set_ylim(bottom=0.0)
-        legend = ax.legend(loc="upper left")
-        _style_legend(legend)
-        _box_spines(ax)
+        legend = ax.legend(loc="upper left", ncol=1)
+        _style_rollout_legend(legend)
         fig.tight_layout()
-        _save(fig, figures_dir, f"cumulative_rmse_{cid}")
+        _save(fig, figures_dir, f"rollout_error_{cid}")
 
     fig, ax = plt.subplots(figsize=PLOT_CONFIG["fig_rmse"])
     x = cum_mean["timestep"].to_numpy()
-    m = cum_mean["cum_rmse_total_mean"].to_numpy()
-    s = cum_mean["cum_rmse_total_std"].to_numpy()
+    if "rollout_rmse_total_mean" in cum_mean.columns:
+        m = cum_mean["rollout_rmse_total_mean"].to_numpy()
+        s = cum_mean["rollout_rmse_total_std"].to_numpy()
+    else:
+        m = _rollout_from_cumulative(cum_mean["cum_rmse_total_mean"].to_numpy(), x)
+        s = _rollout_from_cumulative(cum_mean["cum_rmse_total_std"].to_numpy(), x)
     ax.plot(x, m, label="total", linewidth=PLOT_CONFIG["rmse_linewidth"])
     ax.fill_between(x, m - s, m + s, alpha=PLOT_CONFIG["std_alpha"])
     ax.set_xlabel("Rollout step")
-    ax.set_ylabel("Cumulative RMSE")
     _apply_rollout_axis(ax)
+    _apply_rollout_rmse_style(ax)
     ax.set_ylim(bottom=0.0)
-    legend = ax.legend(loc="upper left")
-    _style_legend(legend)
-    _box_spines(ax)
+    legend = ax.legend(loc="upper left", ncol=1)
+    _style_rollout_legend(legend)
     fig.tight_layout()
-    _save(fig, figures_dir, "cumulative_rmse_mean")
+    _save(fig, figures_dir, "rollout_error_mean")
 
     per_case["case_id"] = per_case["case_id"].astype(str)
     ordered = _sorted_cases_by_re(per_case["case_id"].tolist(), configs_df)
@@ -413,43 +485,89 @@ def _plot_force_bars(
     summary = summary.set_index("case_id").loc[ordered].reset_index()
 
     x = np.arange(len(summary), dtype=float)
-    width = 0.45
 
     for comp in ["fx", "fy"]:
         fig, ax = plt.subplots(figsize=PLOT_CONFIG["fig_rmse"])
-        if comp == "fy":
-            targ_col = "fy_targ_std"
-            pred_col = "fy_pred_std"
+        # Two paired groups per case: mean and std, each comparing truth vs model.
+        block = 0.8
+        barw = block / 4.0
+        if comp == "fx":
+            cols = {
+                "mean_targ": "fx_targ_mean",
+                "mean_pred": "fx_pred_mean",
+                "std_targ": "fx_targ_std",
+                "std_pred": "fx_pred_std",
+            }
+            ylabel = r"$F_x$ [$N$]"
         else:
-            targ_col = "fx_targ_mean"
-            pred_col = "fx_pred_mean"
+            cols = {
+                "mean_targ": "fy_targ_mean",
+                "mean_pred": "fy_pred_mean",
+                "std_targ": "fy_targ_std",
+                "std_pred": "fy_pred_std",
+            }
+            ylabel = r"$F_y$ [$N$]"
+
+        x_mean_targ = x - block / 2 + 0.5 * barw
+        x_mean_pred = x - block / 2 + 1.5 * barw
+        x_std_targ = x - block / 2 + 2.5 * barw
+        x_std_pred = x - block / 2 + 3.5 * barw
+
         ax.bar(
-            x - width / 2,
-            summary[targ_col],
-            width=width,
+            x_mean_targ,
+            summary[cols["mean_targ"]],
+            width=barw,
             color=PLOT_CONFIG["bar_truth_color"],
             edgecolor="black",
             linewidth=0.8,
-            label="Ground Truth",
+            label="Ground Truth mean",
         )
         ax.bar(
-            x + width / 2,
-            summary[pred_col],
-            width=width,
+            x_mean_pred,
+            summary[cols["mean_pred"]],
+            width=barw,
             color=PLOT_CONFIG["pred_color"],
             edgecolor="black",
             linewidth=0.8,
-            label=model_label,
+            alpha=0.9,
+            label=f"{model_label} mean",
+        )
+        ax.bar(
+            x_std_targ,
+            summary[cols["std_targ"]],
+            width=barw,
+            color=_lighten_color(PLOT_CONFIG["bar_truth_color"]),
+            edgecolor="black",
+            linewidth=0.8,
+            hatch="//",
+            label="Ground Truth std",
+        )
+        ax.bar(
+            x_std_pred,
+            summary[cols["std_pred"]],
+            width=barw,
+            color=_lighten_color(PLOT_CONFIG["pred_color"]),
+            edgecolor="black",
+            linewidth=0.8,
+            hatch="//",
+            alpha=0.9,
+            label=f"{model_label} std",
         )
         ax.set_xticks(x)
         ax.set_xticklabels(summary["case_id"].tolist())
         ax.set_xlabel(r"Case ID (ascending $Re$)")
-        if comp == "fx":
-            ax.set_ylabel(r"$F_x$ [$N$]")
-        else:
-            ax.set_ylabel(r"$F_y$ fluctuation [$N$]")
-        legend = ax.legend(loc="upper left")
-        _style_legend(legend)
+        ax.set_ylabel(ylabel)
+        ax.axhline(
+            0.0, color="#505050", linewidth=0.8, linestyle="--", alpha=0.35, zorder=1
+        )
+        _force_compact_legend(
+            ax,
+            labels=["Ground Truth", model_label],
+            colors=[PLOT_CONFIG["bar_truth_color"], PLOT_CONFIG["pred_color"]],
+        )
+        ymin, ymax = ax.get_ylim()
+        if ymax > 0:
+            ax.set_ylim(ymin, ymax * 1.2)
         ax.tick_params(axis="x", rotation=45)
         for lbl in ax.get_xticklabels():
             lbl.set_ha("right")

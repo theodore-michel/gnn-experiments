@@ -9,6 +9,8 @@ import matplotlib
 
 import matplotlib.pyplot as plt
 from matplotlib import colors as mcolors
+from matplotlib.patches import Patch
+from matplotlib.ticker import FuncFormatter
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -57,6 +59,11 @@ def _box_spines(ax: plt.Axes) -> None:
         ax.spines[side].set_visible(True)
 
 
+def _hide_top_right_spines(ax: plt.Axes) -> None:
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+
 def _rollout_xticks() -> List[int]:
     ticks = list(
         range(
@@ -76,6 +83,46 @@ def _apply_rollout_axis(ax: plt.Axes) -> None:
 def _lighten_color(color: str, blend: float = 0.75) -> tuple:
     rgb = np.array(mcolors.to_rgb(color))
     return tuple((1.0 - blend) * rgb + blend * np.ones(3))
+
+
+def _rollout_from_cumulative(cum_vals: np.ndarray, timesteps: np.ndarray) -> np.ndarray:
+    denom = np.maximum(timesteps.astype(float), 1.0)
+    return cum_vals / denom
+
+
+def _apply_rollout_rmse_style(ax: plt.Axes) -> None:
+    ax.set_ylabel("RMSE rollout")
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda v, pos: f"{v * 1e3:g}"))
+    ax.text(
+        0.0,
+        1.01,
+        "1e-3",
+        transform=ax.transAxes,
+        ha="left",
+        va="bottom",
+        fontsize=PLOT_CONFIG["fontsize_ticks"],
+    )
+    _hide_top_right_spines(ax)
+
+
+def _style_rollout_legend(legend):
+    if legend is None:
+        return
+    legend.set_frame_on(False)
+    for handle in legend.legend_handles:
+        if hasattr(handle, "set_linewidth"):
+            handle.set_linewidth(max(3.0, PLOT_CONFIG["rmse_linewidth"] * 1.8))
+
+
+def _force_compact_legend(ax: plt.Axes, labels: List[str], colors: List[str]) -> None:
+    handles: List[object] = [
+        *[Patch(facecolor=c, edgecolor="black", linewidth=0.8) for c in colors],
+        Patch(facecolor="white", edgecolor="black", linewidth=0.8),
+        Patch(facecolor="white", edgecolor="black", linewidth=0.8, hatch="//"),
+    ]
+    legend_labels: List[str] = [*labels, "mean", "std"]
+    legend = ax.legend(handles, legend_labels, loc="upper left", ncol=2)
+    _style_legend(legend)
 
 
 def _write_rmse_summary(
@@ -257,24 +304,36 @@ def run(
                     if row_i < 2:
                         ax.tick_params(axis="x", labelbottom=False)
                     _box_spines(ax)
-                    if i == 0:
-                        legend = ax.legend(loc="lower center", ncol=2)
-                        _style_legend(legend)
 
                 for j in range(len(sensors), 3 * ncols):
                     axs.flatten()[j].set_visible(False)
-                fig.tight_layout(pad=0.6)
+
+                handles, legend_labels = axs.flatten()[0].get_legend_handles_labels()
+                legend = fig.legend(
+                    handles,
+                    legend_labels,
+                    loc="upper center",
+                    bbox_to_anchor=(0.5, 1.02),
+                    frameon=True,
+                    ncol=len(legend_labels),
+                )
+                _style_legend(legend)
+                fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.93), pad=0.6)
                 _save(
                     fig, out, f"compare_sensor_{field_label}_{case_id}{sensor_suffix}"
                 )
 
     if only in {"all", "rmse"}:
-        fig, ax = plt.subplots(figsize=(13, 7))
+        fig, ax = plt.subplots(figsize=PLOT_CONFIG["fig_rmse"])
         for midx, mdata in enumerate(models_data):
             d = mdata["cum"]
             x = d["timestep"].to_numpy()
-            m = d["cum_rmse_total_mean"].to_numpy()
-            s = d["cum_rmse_total_std"].to_numpy()
+            if "rollout_rmse_total_mean" in d.columns:
+                m = d["rollout_rmse_total_mean"].to_numpy()
+                s = d["rollout_rmse_total_std"].to_numpy()
+            else:
+                m = _rollout_from_cumulative(d["cum_rmse_total_mean"].to_numpy(), x)
+                s = _rollout_from_cumulative(d["cum_rmse_total_std"].to_numpy(), x)
             ax.plot(
                 x,
                 m,
@@ -286,38 +345,15 @@ def run(
                 x, m - s, m + s, color=colors[midx % len(colors)], alpha=0.25
             )
         ax.set_xlabel("Rollout step")
-        ax.set_ylabel("Cumulative RMSE total")
         _apply_rollout_axis(ax)
+        _apply_rollout_rmse_style(ax)
         ax.set_ylim(bottom=0.0)
-        legend = ax.legend(loc="upper left", ncol=2)
-        _style_legend(legend)
-        _box_spines(ax)
+        legend = ax.legend(loc="upper left", ncol=1)
+        _style_rollout_legend(legend)
         fig.tight_layout()
-        _save(fig, out, "compare_cumulative_rmse_total")
+        _save(fig, out, "compare_rollout_error_total")
 
-        for case_id in tqdm(common_cases, desc="Compare cumulative RMSE cases"):
-            fig, ax = plt.subplots(figsize=(13, 7))
-            for midx, model_path in enumerate(model_paths):
-                cfile = model_path / "errors" / f"cumulative_rmse_{case_id}.csv"
-                d = pd.read_csv(cfile)
-                ax.plot(
-                    d["timestep"],
-                    d["cum_rmse_total"],
-                    color=colors[midx % len(colors)],
-                    linewidth=2.2,
-                    label=labels[midx],
-                )
-            ax.set_xlabel("Rollout step")
-            ax.set_ylabel("Cumulative RMSE total")
-            _apply_rollout_axis(ax)
-            ax.set_ylim(bottom=0.0)
-            legend = ax.legend(loc="upper left", ncol=2)
-            _style_legend(legend)
-            _box_spines(ax)
-            fig.tight_layout()
-            _save(fig, out, f"compare_cumulative_rmse_case_{case_id}")
-
-        fig, ax = plt.subplots(figsize=(14, 7))
+        fig, ax = plt.subplots(figsize=PLOT_CONFIG["fig_forces"])
         num_cases = len(common_cases)
         block_gap = 1.0
         xticks = []
@@ -366,7 +402,7 @@ def run(
 
     if only in {"all", "forces"}:
         for comp in tqdm(["fx", "fy"], desc="Compare force bar groups"):
-            fig, ax = plt.subplots(figsize=(14, 7))
+            fig, ax = plt.subplots(figsize=PLOT_CONFIG["fig_forces"])
             base_summary = models_data[0]["forces_summary"].copy()
             base_summary["case_id"] = base_summary["case_id"].astype(str)
             base_summary = (
@@ -374,46 +410,69 @@ def run(
             )
 
             group_width = 0.9
-            barw = group_width / (len(models_data) + 1)
+            series_per_case = 2 * (len(models_data) + 1)
+            barw = group_width / series_per_case
             for i, case_id in enumerate(common_cases):
-                if comp == "fy":
-                    truth_val = base_summary.loc[
-                        base_summary["case_id"] == case_id, "fy_targ_std"
-                    ].iloc[0]
+                if comp == "fx":
+                    t_mean_col, t_std_col = "fx_targ_mean", "fx_targ_std"
+                    p_mean_col, p_std_col = "fx_pred_mean", "fx_pred_std"
                 else:
-                    truth_val = base_summary.loc[
-                        base_summary["case_id"] == case_id, "fx_targ_mean"
-                    ].iloc[0]
+                    t_mean_col, t_std_col = "fy_targ_mean", "fy_targ_std"
+                    p_mean_col, p_std_col = "fy_pred_mean", "fy_pred_std"
+
+                # Group by statistic per case: all means first, then all stds.
+                x_start = i - group_width / 2.0
+                truth_mean = base_summary.loc[
+                    base_summary["case_id"] == case_id, t_mean_col
+                ].iloc[0]
+                truth_std = base_summary.loc[
+                    base_summary["case_id"] == case_id, t_std_col
+                ].iloc[0]
                 ax.bar(
-                    i - group_width / 2 + barw * 0.5,
-                    truth_val,
+                    x_start + 0.5 * barw,
+                    truth_mean,
                     width=barw,
                     color="#7f7f7f",
                     edgecolor="black",
                     linewidth=0.8,
-                    label="Ground Truth" if i == 0 else None,
+                    label="Ground Truth mean" if i == 0 else None,
+                )
+                ax.bar(
+                    x_start + (len(models_data) + 1 + 0.5) * barw,
+                    truth_std,
+                    width=barw,
+                    color=_lighten_color("#7f7f7f"),
+                    edgecolor="black",
+                    linewidth=0.8,
+                    hatch="//",
+                    label="Ground Truth std" if i == 0 else None,
                 )
                 for midx, mdata in enumerate(models_data):
                     summ = mdata["forces_summary"].copy()
                     summ["case_id"] = summ["case_id"].astype(str)
                     summ = summ.set_index("case_id").loc[common_cases].reset_index()
-                    if comp == "fy":
-                        pred_val = summ.loc[
-                            summ["case_id"] == case_id, "fy_pred_std"
-                        ].iloc[0]
-                    else:
-                        pred_val = summ.loc[
-                            summ["case_id"] == case_id, "fx_pred_mean"
-                        ].iloc[0]
-                    xpos = i - group_width / 2 + barw * (midx + 1 + 0.5)
+                    pred_mean = summ.loc[summ["case_id"] == case_id, p_mean_col].iloc[0]
+                    pred_std = summ.loc[summ["case_id"] == case_id, p_std_col].iloc[0]
+                    mean_idx = 1 + midx
+                    std_idx = (len(models_data) + 1) + 1 + midx
                     ax.bar(
-                        xpos,
-                        pred_val,
+                        x_start + (mean_idx + 0.5) * barw,
+                        pred_mean,
                         width=barw,
                         color=colors[midx % len(colors)],
                         edgecolor="black",
                         linewidth=0.8,
-                        label=labels[midx] if i == 0 else None,
+                        label=f"{labels[midx]} mean" if i == 0 else None,
+                    )
+                    ax.bar(
+                        x_start + (std_idx + 0.5) * barw,
+                        pred_std,
+                        width=barw,
+                        color=_lighten_color(colors[midx % len(colors)]),
+                        edgecolor="black",
+                        linewidth=0.8,
+                        hatch="//",
+                        label=f"{labels[midx]} std" if i == 0 else None,
                     )
             ax.set_xticks(np.arange(len(common_cases)))
             ax.set_xticklabels(common_cases)
@@ -421,9 +480,26 @@ def run(
             if comp == "fx":
                 ax.set_ylabel(r"$F_x$ [$N$]")
             else:
-                ax.set_ylabel(r"$F_y$ fluctuation [$N$]")
-            legend = ax.legend(loc="upper left", ncol=2)
-            _style_legend(legend)
+                ax.set_ylabel(r"$F_y$ [$N$]")
+            ax.axhline(
+                0.0,
+                color="#505050",
+                linewidth=0.8,
+                linestyle="--",
+                alpha=0.35,
+                zorder=1,
+            )
+            _force_compact_legend(
+                ax,
+                labels=["Ground Truth", *labels],
+                colors=[
+                    "#7f7f7f",
+                    *[colors[i % len(colors)] for i in range(len(labels))],
+                ],
+            )
+            ymin, ymax = ax.get_ylim()
+            if ymax > 0:
+                ax.set_ylim(ymin, ymax * 1.2)
             ax.tick_params(axis="x", rotation=45)
             for lbl in ax.get_xticklabels():
                 lbl.set_ha("right")
