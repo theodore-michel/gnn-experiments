@@ -43,7 +43,7 @@ fi
 # Activate conda if available
 if command -v conda >/dev/null 2>&1; then
   eval "$(conda shell.bash hook)"
-  conda activate graph || true
+  conda activate gnnpostprocess || conda activate graph || true
 fi
 
 # Validate all configs exist before processing

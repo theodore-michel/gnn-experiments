@@ -1,49 +1,16 @@
-# Conda environment for graph-physics GNN experiments.
-# Recreate with:  conda env create -f environment.yml
-# Update with:    conda env update -f environment.yml --prune
-name: graph
+# Conda environment for GNN postprocessing only.
+# Create with:  conda env create -f environment.yml
+# Update with:  conda env update -f environment.yml --prune
+name: gnnpostprocess
 channels:
-  - pytorch
-  - pyg
   - conda-forge
   - defaults
 dependencies:
   - python=3.11
-  - numpy=2.1.2
+  - numpy
   - scipy
   - pandas
   - matplotlib
   - tqdm
-  - h5py=3.13.0
-  - pyvista=0.44.2
-  - pip
-  - pip:
-    # --- PyTorch ecosystem (CUDA 12.4) ---
-    - torch==2.4.0
-    - torch-scatter==2.1.2
-    - torch-sparse==0.6.18
-    - torch-cluster==1.6.3
-    - torch-spline-conv==1.2.2
-    - torch-geometric==2.6.1
-    # --- Lightning ---
-    - lightning==2.5.0
-    # --- Logging / tracking ---
-    - wandb[media]==0.19.8
-    - loguru==0.7.2
-    # --- I/O & mesh ---
-    - meshio==5.3.5
-    # --- Model utilities ---
-    - einops==0.8.1
-    # --- CLI / display ---
-    - absl-py==2.2.0
-    - click>=8.1
-    - rich>=13.0
-    - pyyaml>=6.0
-    # --- Dev / testing ---
-    - pytest==8.0.1
-    - pytest-benchmark==5.1.0
-    - autoflake==2.3.0
-    - black
-    - isort
-    # --- Misc ---
-    - panel==1.6.1
+  - meshio
+  - h5py

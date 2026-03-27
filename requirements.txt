@@ -1,0 +1,8 @@
+# Minimal pip requirements for gnn-experiments postprocessing
+numpy
+scipy
+pandas
+matplotlib
+tqdm
+meshio
+h5py

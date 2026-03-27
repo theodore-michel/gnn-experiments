@@ -2,12 +2,34 @@
 
 This repository is dedicated to postprocessing Graph Neural Network predictions for cylinder-flow CFD rollouts.
 
-## Environment Setup
+## Quick Start (gnnpostprocess)
 
-Use the `graph` conda environment:
+Create a dedicated postprocessing environment and activate it:
 
 ```bash
-conda activate graph
+cd gnn-experiments
+conda env create -f environment.yml
+conda activate gnnpostprocess
+```
+
+If you already have a custom conda env and only want the Python dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Sanity check:
+
+```bash
+python -m postprocess.postprocess_xdmf --help
+```
+
+## Environment Setup
+
+Use the `gnnpostprocess` conda environment:
+
+```bash
+conda activate gnnpostprocess
 ```
 
 ## Pipeline Architecture
