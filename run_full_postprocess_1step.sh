@@ -16,10 +16,13 @@ fi
 CONFIGS=(
   "configs/config.re2_1step_VPLN.json"
   "configs/config.re2_1step_VPN.json"
+  "configs/config.re2_1step_VPLN_ld.json"
   "configs/config.re3_1step_VPLN.json"
   "configs/config.re3_1step_VPN.json"
+  "configs/config.re3_1step_VPLN_ld.json"
   "configs/config.re4_1step_VPLN.json"
   "configs/config.re4_1step_VPN.json"
+  "configs/config.re4_1step_VPLN_ld.json"
 )
 
 echo "==> Recomputing postprocessed XDMFs and RMSE tables for ${#CONFIGS[@]} 1step configs"
